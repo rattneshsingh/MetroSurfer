@@ -20,6 +20,7 @@ namespace Runner.Spawning
         private Obstacle[] _obstacles;
         private int[] _obstacleHandles;
         private ObstacleKind[] _obstacleKinds;
+        private float[] _obstacleLocalZ;
         private int _obstacleCount;
 
         private Coin[] _coins;
@@ -39,12 +40,13 @@ namespace Runner.Spawning
             _obstacles = new Obstacle[maxObstacles];
             _obstacleHandles = new int[maxObstacles];
             _obstacleKinds = new ObstacleKind[maxObstacles];
+            _obstacleLocalZ = new float[maxObstacles];
 
             _coins = new Coin[maxCoins];
             _coinHandles = new int[maxCoins];
         }
 
-        public bool AddObstacle(Obstacle obstacle, int handle, ObstacleKind kind)
+        public bool AddObstacle(Obstacle obstacle, int handle, ObstacleKind kind, float localZ)
         {
             if (_obstacleCount >= _obstacles.Length)
             {
@@ -54,8 +56,24 @@ namespace Runner.Spawning
             _obstacles[_obstacleCount] = obstacle;
             _obstacleHandles[_obstacleCount] = handle;
             _obstacleKinds[_obstacleCount] = kind;
+            _obstacleLocalZ[_obstacleCount] = localZ;
             _obstacleCount++;
             return true;
+        }
+
+        /// <summary>
+        /// Hides anything already past the cull line. Local Z is cached at spawn time so this
+        /// never touches a Transform — it runs every frame on the segment straddling the line.
+        /// </summary>
+        public void HideObstaclesBehind(float localCullZ)
+        {
+            for (int i = 0; i < _obstacleCount; i++)
+            {
+                if (_obstacleLocalZ[i] < localCullZ)
+                {
+                    _obstacles[i].Hide();
+                }
+            }
         }
 
         public bool AddCoin(Coin coin, int handle)

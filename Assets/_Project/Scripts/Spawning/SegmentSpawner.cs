@@ -30,12 +30,18 @@ namespace Runner.Spawning
         [Header("Track")]
         [Tooltip("Overwritten by GameManager so the track and the player can never disagree.")]
         [SerializeField] private float _laneWidth = 2.2f;
-        [SerializeField] private int _activeSegmentCount = 6;
+        [Tooltip("Total track length is this times Segment Length. Must comfortably exceed the " +
+                 "camera's far clip, or the player watches the world end and segments pop in.")]
+        [SerializeField] private int _activeSegmentCount = 14;
         [SerializeField] private float _segmentLength = 20f;
         [SerializeField] private float _rowSpacing = 5f;
 
         [Tooltip("Z behind the player at which a segment is recycled to the front.")]
         [SerializeField] private float _despawnZ = -18f;
+
+        [Tooltip("Z behind the player at which obstacles stop being drawn. Keeps a bar you just " +
+                 "rolled under from filling the camera and hiding what is coming next.")]
+        [SerializeField] private float _obstacleCullZ = -1f;
 
         [SerializeField] private float _trackSidePadding = 1.2f;
         [SerializeField] private float _floorThickness = 0.5f;
@@ -43,8 +49,9 @@ namespace Runner.Spawning
         [Header("Generation")]
         [SerializeField] private int _seed = 20260817;
 
-        [Tooltip("Rows at the very start of a run left completely clear.")]
-        [SerializeField] private int _safeStartRows = 5;
+        [Tooltip("Authored opening that teaches move/jump/slide before random rows begin. " +
+                 "Leave empty to use the built-in default.")]
+        [SerializeField] private IntroSequence _introSequence;
 
         [Tooltip("Clear rows forced after a row that closes a lane off entirely.")]
         [SerializeField] private int _minRowGapAfterHardRow = 1;
@@ -55,13 +62,13 @@ namespace Runner.Spawning
         [SerializeField] private int _coinValue = 1;
 
         [Header("Grey-cube geometry (Phase 0 stand-ins)")]
-        [SerializeField] private Vector3 _lowObstacleSize = new Vector3(1.6f, 0.7f, 0.7f);
-        [SerializeField] private Vector3 _highObstacleSize = new Vector3(1.6f, 0.9f, 0.7f);
+        [SerializeField] private Vector3 _lowObstacleSize = new Vector3(1.6f, 0.5f, 0.7f);
+        [SerializeField] private Vector3 _highObstacleSize = new Vector3(1.6f, 1.45f, 0.7f);
 
         [Tooltip("Centre height of a slide-under barrier. Must sit above the sliding hitbox and below the standing one.")]
-        [SerializeField] private float _highObstacleCenterY = 1.15f;
+        [SerializeField] private float _highObstacleCenterY = 1.275f;
 
-        [SerializeField] private Vector3 _fullObstacleSize = new Vector3(1.6f, 2.4f, 0.7f);
+        [SerializeField] private Vector3 _fullObstacleSize = new Vector3(1.6f, 2.2f, 0.7f);
         [SerializeField] private Vector3 _coinSize = new Vector3(0.4f, 0.4f, 0.4f);
 
         [Header("Palette — a StateConfig overrides these at runtime")]
@@ -92,7 +99,6 @@ namespace Runner.Spawning
         private Segment[] _segments;
         private Transform[] _segmentTransforms;
         private int _head;
-        private float _frontZ;
         private int _rowsPerSegment;
 
         private ObjectPool<Obstacle> _lowPool;
@@ -113,6 +119,13 @@ namespace Runner.Spawning
         private int _coinLane = 1;
 
         private bool _built;
+        private bool _warnedRngRebuilt;
+
+        /// <summary>False after a mid-play recompile has wiped the runtime state.</summary>
+        public bool IsBuilt => _built && _segments != null && _lowPool != null;
+
+        /// <summary>Zero when no sequence is assigned, which simply means no scripted opening.</summary>
+        private int IntroRowCount => _introSequence == null ? 0 : _introSequence.Count;
 
         /// <summary>Builds every pool and the segment ring. Call once, before the first run.</summary>
         public void Initialize(float laneWidth, DifficultyCurve difficulty, ObstacleTable obstacleTable, StateConfig state)
@@ -120,6 +133,13 @@ namespace Runner.Spawning
             _laneWidth = laneWidth;
             _difficulty = difficulty;
             _obstacleTable = obstacleTable;
+
+            _rng = new System.Random(_seed);
+
+            if (_introSequence == null)
+            {
+                _introSequence = IntroSequence.CreateDefault();
+            }
 
             ApplyPalette(state);
             ResolveLayers();
@@ -144,7 +164,7 @@ namespace Runner.Spawning
         /// <summary>Rebuilds the whole track for a fresh run. No scene reload, no reallocation.</summary>
         public void ResetRun()
         {
-            if (!_built)
+            if (!IsBuilt)
             {
                 return;
             }
@@ -156,17 +176,16 @@ namespace Runner.Spawning
             _head = 0;
 
             // One segment starts behind the player so the track does not visibly begin at their feet.
-            float startZ = -_segmentLength;
-            _frontZ = startZ;
+            float z = -_segmentLength;
 
             for (int i = 0; i < _segments.Length; i++)
             {
                 Segment segment = _segments[i];
                 ReleaseContents(segment);
 
-                _segmentTransforms[i].localPosition = new Vector3(0f, 0f, _frontZ);
-                PopulateSegment(segment, Mathf.Max(0f, _frontZ));
-                _frontZ += _segmentLength;
+                _segmentTransforms[i].localPosition = new Vector3(0f, 0f, z);
+                PopulateSegment(segment, Mathf.Max(0f, z));
+                z += _segmentLength;
             }
         }
 
@@ -176,7 +195,7 @@ namespace Runner.Spawning
         /// </summary>
         public void Tick(float deltaTime, float speed, float distance)
         {
-            if (!_built)
+            if (!IsBuilt)
             {
                 return;
             }
@@ -193,6 +212,8 @@ namespace Runner.Spawning
                 t.localPosition = position;
             }
 
+            CullPassedObstacles();
+
             // At most one segment passes the despawn line per frame at any sane speed, but loop
             // anyway so a huge delta cannot leave a gap in the track.
             for (int guard = 0; guard < _segments.Length; guard++)
@@ -207,18 +228,44 @@ namespace Runner.Spawning
             }
         }
 
+        /// <summary>
+        /// Only the segment straddling the cull line can hold anything newly passed: segments
+        /// ahead have nothing behind the player yet, and segments fully past it were already
+        /// dealt with on an earlier frame. So this is one segment's worth of work, not fourteen.
+        /// </summary>
+        private void CullPassedObstacles()
+        {
+            for (int i = 0; i < _segments.Length; i++)
+            {
+                float segmentZ = _segmentTransforms[i].localPosition.z;
+
+                if (segmentZ > _obstacleCullZ || segmentZ + _segmentLength < _obstacleCullZ)
+                {
+                    continue;
+                }
+
+                _segments[i].HideObstaclesBehind(_obstacleCullZ - segmentZ);
+            }
+        }
+
         private void RecycleHead(float distance)
         {
             Segment segment = _segments[_head];
             ReleaseContents(segment);
 
-            _segmentTransforms[_head].localPosition = new Vector3(0f, 0f, _frontZ);
+            // Placement is measured off the segment currently at the front, never off a running
+            // counter. A counter does not scroll with the world, so it drifts ahead of the real
+            // track edge by exactly the distance travelled and opens a widening hole. Reading
+            // the front segment's actual position cannot drift.
+            int frontIndex = (_head + _segments.Length - 1) % _segments.Length;
+            float z = _segmentTransforms[frontIndex].localPosition.z + _segmentLength;
+
+            _segmentTransforms[_head].localPosition = new Vector3(0f, 0f, z);
 
             // The run distance at which the player will actually reach this segment — that is
             // what difficulty should ramp against, not the distance already covered.
-            PopulateSegment(segment, distance + _frontZ);
+            PopulateSegment(segment, distance + z);
 
-            _frontZ += _segmentLength;
             _head = (_head + 1) % _segments.Length;
         }
 
@@ -232,29 +279,58 @@ namespace Runner.Spawning
                 float localZ = row * _rowSpacing + _rowSpacing * 0.5f;
                 float rowDistance = runDistanceAtSegmentStart + localZ;
 
-                int occupiedMask = 0;
-
-                bool inSafeStart = _rowsGenerated < _safeStartRows;
-                bool gapSatisfied = _rowsSinceHardRow >= _minRowGapAfterHardRow;
-
-                if (!inSafeStart && gapSatisfied && Roll() < density)
+                if (_rowsGenerated < IntroRowCount)
                 {
-                    occupiedMask = TryPlaceRow(segment, localZ, rowDistance);
+                    PopulateIntroRow(segment, localZ);
                 }
                 else
                 {
-                    // Every row must advance the gap counter, including skipped ones —
-                    // otherwise a forced breather row never expires and obstacles stop
-                    // spawning for the rest of the run.
-                    BumpRowGap();
+                    PopulateProceduralRow(segment, localZ, rowDistance, density, coinChance);
                 }
 
                 _rowsGenerated++;
+            }
+        }
 
-                if (Roll() < coinChance)
-                {
-                    PlaceCoins(segment, localZ, occupiedMask);
-                }
+        /// <summary>Scripted row. No dice rolled — the opening has to be identical every run.</summary>
+        private void PopulateIntroRow(Segment segment, float localZ)
+        {
+            IntroRow row = _introSequence.Get(_rowsGenerated);
+
+            int occupiedMask = row.LaneMask == 0
+                ? 0
+                : PlaceRow(segment, row.LaneMask, row.Kind, localZ);
+
+            // The sequence paces itself, so procedural generation starts with a clean counter
+            // the moment it takes over.
+            _rowsSinceHardRow = RowGapCeiling;
+
+            if (row.Coins)
+            {
+                PlaceCoins(segment, localZ, occupiedMask);
+            }
+        }
+
+        private void PopulateProceduralRow(
+            Segment segment, float localZ, float rowDistance, float density, float coinChance)
+        {
+            int occupiedMask = 0;
+
+            if (_rowsSinceHardRow >= _minRowGapAfterHardRow && Roll() < density)
+            {
+                occupiedMask = TryPlaceRow(segment, localZ, rowDistance);
+            }
+            else
+            {
+                // Every row must advance the gap counter, including skipped ones — otherwise a
+                // forced breather row never expires and obstacles stop spawning for the rest
+                // of the run.
+                BumpRowGap();
+            }
+
+            if (Roll() < coinChance)
+            {
+                PlaceCoins(segment, localZ, occupiedMask);
             }
         }
 
@@ -283,15 +359,7 @@ namespace Runner.Spawning
                 return 0;
             }
 
-            for (int lane = 0; lane < LaneCount; lane++)
-            {
-                if ((mask & (1 << lane)) == 0)
-                {
-                    continue;
-                }
-
-                PlaceObstacle(segment, lane, pattern.Kind, localZ);
-            }
+            PlaceRow(segment, mask, pattern.Kind, localZ);
 
             // Only a Full row forces a lane change, so only a Full row earns a breather after it.
             if (pattern.Kind == ObstacleKind.Full)
@@ -314,6 +382,20 @@ namespace Runner.Spawning
             }
         }
 
+        /// <summary>Fills every lane in the mask. Returns the mask, for coin placement to avoid.</summary>
+        private int PlaceRow(Segment segment, int mask, ObstacleKind kind, float localZ)
+        {
+            for (int lane = 0; lane < LaneCount; lane++)
+            {
+                if ((mask & (1 << lane)) != 0)
+                {
+                    PlaceObstacle(segment, lane, kind, localZ);
+                }
+            }
+
+            return mask;
+        }
+
         private void PlaceObstacle(Segment segment, int lane, ObstacleKind kind, float localZ)
         {
             if (!segment.HasObstacleRoom)
@@ -328,24 +410,18 @@ namespace Runner.Spawning
             t.SetParent(segment.Root, false);
             t.localPosition = new Vector3(LaneToX(lane), CenterHeightFor(kind), localZ);
 
-            segment.AddObstacle(obstacle, handle, kind);
+            segment.AddObstacle(obstacle, handle, kind, localZ);
         }
 
         private void PlaceCoins(Segment segment, float localZ, int occupiedMask)
         {
-            // Keep the trail in one lane for as long as that lane stays clear — a coin line
-            // that jitters between lanes reads as noise rather than as a path.
-            if ((occupiedMask & (1 << _coinLane)) != 0)
+            int lane = PickCoinLane(occupiedMask);
+            if (lane < 0)
             {
-                int freeLane = PickFreeLane(occupiedMask);
-                if (freeLane < 0)
-                {
-                    return;
-                }
-
-                _coinLane = freeLane;
+                return;
             }
 
+            _coinLane = lane;
             float x = LaneToX(_coinLane);
             float startZ = localZ - (_coinsPerRow - 1) * _coinSpacing * 0.5f;
 
@@ -366,14 +442,28 @@ namespace Runner.Spawning
             }
         }
 
-        private int PickFreeLane(int occupiedMask)
+        /// <summary>
+        /// Deliberate, not random. Preference order is: stay in the lane the trail is already
+        /// in, else the centre lane, else whatever is open. Randomising this made coins look
+        /// scattered rather than like a path worth following.
+        /// </summary>
+        private int PickCoinLane(int occupiedMask)
         {
-            int offset = _rng.Next(0, LaneCount);
+            const int CentreLane = LaneCount / 2;
 
-            for (int i = 0; i < LaneCount; i++)
+            if (IsLaneFree(occupiedMask, _coinLane))
             {
-                int lane = (offset + i) % LaneCount;
-                if ((occupiedMask & (1 << lane)) == 0)
+                return _coinLane;
+            }
+
+            if (IsLaneFree(occupiedMask, CentreLane))
+            {
+                return CentreLane;
+            }
+
+            for (int lane = 0; lane < LaneCount; lane++)
+            {
+                if (IsLaneFree(occupiedMask, lane))
                 {
                     return lane;
                 }
@@ -382,16 +472,47 @@ namespace Runner.Spawning
             return -1;
         }
 
+        private static bool IsLaneFree(int occupiedMask, int lane) => (occupiedMask & (1 << lane)) == 0;
+
         private void ReleaseContents(Segment segment)
         {
-            for (int i = 0; i < segment.ObstacleCount; i++)
+            // Deliberately one operation per line. Packing these into a single expression made
+            // a NullReferenceException here impossible to localise, because the accessors are
+            // one-liners the JIT inlines away and the stack trace collapses onto the caller.
+            if (segment == null)
             {
-                PoolFor(segment.GetObstacleKind(i)).Release(segment.GetObstacleHandle(i));
+                Debug.LogError($"[{nameof(SegmentSpawner)}] ReleaseContents got a null segment.", this);
+                return;
             }
 
-            for (int i = 0; i < segment.CoinCount; i++)
+            int obstacleCount = segment.ObstacleCount;
+            for (int i = 0; i < obstacleCount; i++)
             {
-                _coinPool.Release(segment.GetCoinHandle(i));
+                ObstacleKind kind = segment.GetObstacleKind(i);
+                int handle = segment.GetObstacleHandle(i);
+                ObjectPool<Obstacle> pool = PoolFor(kind);
+
+                if (pool == null)
+                {
+                    Debug.LogError($"[{nameof(SegmentSpawner)}] No pool for kind '{kind}' " +
+                                   $"(index {i} of {obstacleCount}, handle {handle}).", this);
+                    continue;
+                }
+
+                pool.Release(handle);
+            }
+
+            int coinCount = segment.CoinCount;
+            if (coinCount > 0 && _coinPool == null)
+            {
+                Debug.LogError($"[{nameof(SegmentSpawner)}] Coin pool is null with {coinCount} coins attached.", this);
+            }
+            else
+            {
+                for (int i = 0; i < coinCount; i++)
+                {
+                    _coinPool.Release(segment.GetCoinHandle(i));
+                }
             }
 
             segment.ClearContents();
@@ -419,7 +540,27 @@ namespace Runner.Spawning
 
         private float LaneToX(int lane) => (lane - (LaneCount - 1) * 0.5f) * _laneWidth;
 
-        private float Roll() => (float)_rng.NextDouble();
+        /// <summary>
+        /// Safety net. A script recompile during Play mode wipes private non-serialized fields
+        /// without re-running Awake, which would otherwise null this mid-run. Re-seeding costs
+        /// determinism for the rest of that run, but a reproducible run beats a dead one.
+        /// </summary>
+        private float Roll()
+        {
+            if (_rng == null)
+            {
+                _rng = new System.Random(_seed);
+
+                if (!_warnedRngRebuilt)
+                {
+                    _warnedRngRebuilt = true;
+                    Debug.LogWarning($"[{nameof(SegmentSpawner)}] RNG was null and has been re-seeded. " +
+                                     "This normally means scripts recompiled during Play mode.", this);
+                }
+            }
+
+            return (float)_rng.NextDouble();
+        }
 
         private void OnDestroy()
         {

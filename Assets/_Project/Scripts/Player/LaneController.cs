@@ -27,13 +27,13 @@ namespace Runner.Player
         [SerializeField] private AnimationCurve _laneSnapEase = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("Jump")]
-        [SerializeField] private float _jumpHeight = 1.9f;
+        [SerializeField] private float _jumpHeight = 1.5f;
 
         [Tooltip("Seconds from take-off to apex. Together with height this defines gravity.")]
-        [SerializeField] private float _jumpRiseDuration = 0.32f;
+        [SerializeField] private float _jumpRiseDuration = 0.45f;
 
         [Tooltip("Gravity multiplier while descending. >1 kills the floaty feel.")]
-        [SerializeField] private float _fallGravityMultiplier = 1.7f;
+        [SerializeField] private float _fallGravityMultiplier = 1.5f;
 
         [Tooltip("Grace period after leaving the ground where a jump still counts.")]
         [SerializeField] private float _coyoteTime = 0.12f;
@@ -41,8 +41,8 @@ namespace Runner.Player
         [Tooltip("A jump or slide pressed this long before it becomes legal still fires.")]
         [SerializeField] private float _inputBufferWindow = 0.16f;
 
-        [Header("Slide")]
-        [SerializeField] private float _slideDuration = 0.55f;
+        [Header("Roll (the slide input)")]
+        [SerializeField] private float _slideDuration = 0.6f;
 
         [Tooltip("Sliding in mid-air slams the player down instead of being ignored.")]
         [SerializeField] private bool _fastFallOnAirSlide = true;
@@ -61,7 +61,10 @@ namespace Runner.Player
         [Header("Visual")]
         [SerializeField] private Transform _visual;
         [SerializeField] private Vector3 _standingVisualScale = Vector3.one;
-        [SerializeField] private Vector3 _slidingVisualScale = new Vector3(1f, 0.45f, 1f);
+        [SerializeField] private Vector3 _slidingVisualScale = new Vector3(0.9f, 0.9f, 0.9f);
+
+        [Tooltip("Forward rotations the visual makes during a roll. 0 disables the spin.")]
+        [SerializeField] private float _rollSpinTurns = 1f;
         [SerializeField] private float _visualSquashSpeed = 18f;
 
         [Header("Safety")]
@@ -136,7 +139,7 @@ namespace Runner.Player
             TickSlide(dt);
 
             ApplyTransform();
-            TickVisualSquash(dt);
+            TickVisual(dt);
         }
 
         /// <summary>Called by GameManager so lane width has exactly one source of truth.</summary>
@@ -179,6 +182,7 @@ namespace Runner.Player
             if (_visual != null)
             {
                 _visual.localScale = _standingVisualScale;
+                _visual.localRotation = Quaternion.identity;
             }
 
             if (_input != null)
@@ -350,7 +354,7 @@ namespace Runner.Player
             _hitbox.size = size;
         }
 
-        private void TickVisualSquash(float dt)
+        private void TickVisual(float dt)
         {
             if (_visual == null)
             {
@@ -359,6 +363,18 @@ namespace Runner.Player
 
             Vector3 target = _isSliding ? _slidingVisualScale : _standingVisualScale;
             _visual.localScale = Vector3.Lerp(_visual.localScale, target, 1f - Mathf.Exp(-_visualSquashSpeed * dt));
+
+            // A squashed cube reads as ducking. Only actual rotation reads as a roll, and the
+            // player needs to see which one they did to learn the timing.
+            if (_isSliding && _slideDuration > 0f && _rollSpinTurns != 0f)
+            {
+                float progress = 1f - Mathf.Clamp01(_slideTimer / _slideDuration);
+                _visual.localRotation = Quaternion.Euler(progress * 360f * _rollSpinTurns, 0f, 0f);
+            }
+            else
+            {
+                _visual.localRotation = Quaternion.identity;
+            }
         }
 
         private void ApplyTransform()

@@ -93,7 +93,21 @@ namespace Runner.Utils
                 poolable.OnDespawn();
             }
 
-            _instances[handle].gameObject.SetActive(false);
+            T instance = _instances[handle];
+            if (instance == null)
+            {
+                // Unity's overloaded == catches both a real null and a destroyed object here.
+                // Note the interface check above cannot do that: comparing an interface
+                // reference to null is plain reference equality and sails past a destroyed
+                // component.
+                Debug.LogError($"ObjectPool<{_label}> has no live instance at handle {handle} " +
+                               $"(capacity {_instances.Length}). It was destroyed or never created.");
+                _isFree[handle] = true;
+                _freeStack[_freeCount++] = handle;
+                return;
+            }
+
+            instance.gameObject.SetActive(false);
             _isFree[handle] = true;
             _freeStack[_freeCount++] = handle;
         }

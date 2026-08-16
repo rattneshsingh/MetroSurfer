@@ -30,6 +30,7 @@ namespace Runner.EditorTools
         private const string ScriptableObjectFolder = "Assets/_Project/ScriptableObjects";
         private const string DifficultyAssetPath = ScriptableObjectFolder + "/DifficultyCurve.asset";
         private const string ObstacleTableAssetPath = ScriptableObjectFolder + "/ObstacleTable.asset";
+        private const string IntroSequenceAssetPath = ScriptableObjectFolder + "/IntroSequence.asset";
 
         private const string PlayerLayerName = "Player";
         private const string ObstacleLayerName = "Obstacle";
@@ -39,8 +40,11 @@ namespace Runner.EditorTools
         private const int ObstacleLayerIndex = 7;
         private const int CoinLayerIndex = 8;
 
-        private static readonly Vector3 CameraPosition = new Vector3(0f, 3.6f, -6.5f);
-        private static readonly Vector3 CameraEuler = new Vector3(12f, 0f, 0f);
+        private static readonly Vector3 CameraPosition = new Vector3(0f, 3.4f, -6.4f);
+        private static readonly Vector3 CameraEuler = new Vector3(17f, 0f, 0f);
+
+        /// <summary>Camera background and fog share this, so the horizon has no visible seam.</summary>
+        private static readonly Color SkyColor = new Color(0.45f, 0.52f, 0.60f);
 
         [MenuItem("Runner/Build Phase 0 Scene", priority = 0)]
         public static void Build()
@@ -62,7 +66,9 @@ namespace Runner.EditorTools
 
             DifficultyCurve difficulty = LoadOrCreateAsset(DifficultyAssetPath, DifficultyCurve.CreateDefault);
             ObstacleTable obstacleTable = LoadOrCreateAsset(ObstacleTableAssetPath, ObstacleTable.CreateDefault);
+            IntroSequence introSequence = LoadOrCreateAsset(IntroSequenceAssetPath, IntroSequence.CreateDefault);
 
+            WireSpawner(spawner, introSequence);
             WirePlayer(player, hitbox, visual, input);
             WireGameManager(gameManager, player, spawner, input, hud, difficulty, obstacleTable);
 
@@ -143,8 +149,16 @@ namespace Runner.EditorTools
             t.rotation = Quaternion.Euler(CameraEuler);
 
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.45f, 0.52f, 0.60f);
+            camera.backgroundColor = SkyColor;
             camera.farClipPlane = 200f;
+
+            // Fog ends before the far clip, which ends well before the track does. Between them
+            // the player can never see the world stop or a segment pop into place.
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogColor = SkyColor;
+            RenderSettings.fogStartDistance = 70f;
+            RenderSettings.fogEndDistance = 190f;
         }
 
         private static LaneController BuildPlayer(
@@ -340,6 +354,13 @@ namespace Runner.EditorTools
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.sizeDelta = size;
             rect.anchoredPosition = new Vector2(0f, y);
+        }
+
+        private static void WireSpawner(SegmentSpawner spawner, IntroSequence introSequence)
+        {
+            SerializedObject serialized = new SerializedObject(spawner);
+            SetReference(serialized, "_introSequence", introSequence);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void WirePlayer(LaneController player, BoxCollider hitbox, Transform visual, PlayerInputReader input)

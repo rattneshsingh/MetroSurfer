@@ -25,35 +25,43 @@ MonoBehaviour:
     Kind: 0
     Weight: 1
     MinDistance: 0
-  - LaneMask: 2
-    Kind: 2
-    Weight: 0.8
-    MinDistance: 60
-  - LaneMask: 1
-    Kind: 2
-    Weight: 0.6
-    MinDistance: 60
-  - LaneMask: 4
-    Kind: 2
-    Weight: 0.6
-    MinDistance: 60
   - LaneMask: 7
     Kind: 0
-    Weight: 0.5
-    MinDistance: 150
+    Weight: 0.9
+    MinDistance: 0
+  - LaneMask: 7
+    Kind: 1
+    Weight: 0.9
+    MinDistance: 0
   - LaneMask: 2
     Kind: 1
     Weight: 0.7
-    MinDistance: 200
-  - LaneMask: 7
+    MinDistance: 0
+  - LaneMask: 1
     Kind: 1
-    Weight: 0.4
-    MinDistance: 320
+    Weight: 0.5
+    MinDistance: 0
+  - LaneMask: 4
+    Kind: 1
+    Weight: 0.5
+    MinDistance: 0
+  - LaneMask: 2
+    Kind: 2
+    Weight: 0.8
+    MinDistance: 0
+  - LaneMask: 1
+    Kind: 2
+    Weight: 0.6
+    MinDistance: 0
+  - LaneMask: 4
+    Kind: 2
+    Weight: 0.6
+    MinDistance: 0
   - LaneMask: 3
     Kind: 2
     Weight: 0.5
-    MinDistance: 420
+    MinDistance: 250
   - LaneMask: 6
     Kind: 2
     Weight: 0.5
-    MinDistance: 420
+    MinDistance: 250

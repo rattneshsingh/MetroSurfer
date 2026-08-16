@@ -89,19 +89,24 @@ namespace Runner.Config
 
         private void FillDefaults()
         {
+            // The intro sequence has already taught all three verbs by the time this table is
+            // consulted, so every verb is in play from the first procedural row. Nothing here
+            // is gated behind a distance the player has to grind out to see.
             _patterns = new[]
             {
                 new ObstaclePattern { LaneMask = 0b001, Kind = ObstacleKind.Low,  Weight = 1.0f, MinDistance = 0f },
                 new ObstaclePattern { LaneMask = 0b010, Kind = ObstacleKind.Low,  Weight = 1.0f, MinDistance = 0f },
                 new ObstaclePattern { LaneMask = 0b100, Kind = ObstacleKind.Low,  Weight = 1.0f, MinDistance = 0f },
-                new ObstaclePattern { LaneMask = 0b010, Kind = ObstacleKind.Full, Weight = 0.8f, MinDistance = 60f },
-                new ObstaclePattern { LaneMask = 0b001, Kind = ObstacleKind.Full, Weight = 0.6f, MinDistance = 60f },
-                new ObstaclePattern { LaneMask = 0b100, Kind = ObstacleKind.Full, Weight = 0.6f, MinDistance = 60f },
-                new ObstaclePattern { LaneMask = 0b111, Kind = ObstacleKind.Low,  Weight = 0.5f, MinDistance = 150f },
-                new ObstaclePattern { LaneMask = 0b010, Kind = ObstacleKind.High, Weight = 0.7f, MinDistance = 200f },
-                new ObstaclePattern { LaneMask = 0b111, Kind = ObstacleKind.High, Weight = 0.4f, MinDistance = 320f },
-                new ObstaclePattern { LaneMask = 0b011, Kind = ObstacleKind.Full, Weight = 0.5f, MinDistance = 420f },
-                new ObstaclePattern { LaneMask = 0b110, Kind = ObstacleKind.Full, Weight = 0.5f, MinDistance = 420f }
+                new ObstaclePattern { LaneMask = 0b111, Kind = ObstacleKind.Low,  Weight = 0.9f, MinDistance = 0f },
+                new ObstaclePattern { LaneMask = 0b111, Kind = ObstacleKind.High, Weight = 0.9f, MinDistance = 0f },
+                new ObstaclePattern { LaneMask = 0b010, Kind = ObstacleKind.High, Weight = 0.7f, MinDistance = 0f },
+                new ObstaclePattern { LaneMask = 0b001, Kind = ObstacleKind.High, Weight = 0.5f, MinDistance = 0f },
+                new ObstaclePattern { LaneMask = 0b100, Kind = ObstacleKind.High, Weight = 0.5f, MinDistance = 0f },
+                new ObstaclePattern { LaneMask = 0b010, Kind = ObstacleKind.Full, Weight = 0.8f, MinDistance = 0f },
+                new ObstaclePattern { LaneMask = 0b001, Kind = ObstacleKind.Full, Weight = 0.6f, MinDistance = 0f },
+                new ObstaclePattern { LaneMask = 0b100, Kind = ObstacleKind.Full, Weight = 0.6f, MinDistance = 0f },
+                new ObstaclePattern { LaneMask = 0b011, Kind = ObstacleKind.Full, Weight = 0.5f, MinDistance = 250f },
+                new ObstaclePattern { LaneMask = 0b110, Kind = ObstacleKind.Full, Weight = 0.5f, MinDistance = 250f }
             };
         }
     }

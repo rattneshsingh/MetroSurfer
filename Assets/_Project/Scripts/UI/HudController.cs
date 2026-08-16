@@ -25,6 +25,9 @@ namespace Runner.UI
 
             if (_restartButton != null)
             {
+                // Remove first: this can be called again after a mid-play recompile, and
+                // AddListener happily registers the same callback twice.
+                _restartButton.onClick.RemoveListener(InvokeRestart);
                 _restartButton.onClick.AddListener(InvokeRestart);
             }
         }

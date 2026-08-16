@@ -64,21 +64,31 @@ namespace Runner.Core
             Application.targetFrameRate = _targetFrameRate;
             QualitySettings.vSyncCount = 0;
 
+            EnsureInitialized();
+        }
+
+        /// <summary>
+        /// Idempotent setup. Also reachable from Update, because a script recompile during Play
+        /// mode resets private non-serialized fields without re-running Awake — which leaves the
+        /// spawner ticking with null pools and an unbound restart button.
+        /// </summary>
+        private void EnsureInitialized()
+        {
             ResolveTuningData();
 
-            if (_player != null)
+            if (_playerCollision == null && _player != null)
             {
                 _player.Configure(_laneWidth);
                 _playerCollision = _player.GetComponent<PlayerCollision>();
+
+                if (_playerCollision != null)
+                {
+                    _playerCollision.Hit += OnPlayerHit;
+                    _playerCollision.CoinCollected += OnCoinCollected;
+                }
             }
 
-            if (_playerCollision != null)
-            {
-                _playerCollision.Hit += OnPlayerHit;
-                _playerCollision.CoinCollected += OnCoinCollected;
-            }
-
-            if (_spawner != null)
+            if (_spawner != null && !_spawner.IsBuilt)
             {
                 _spawner.Initialize(_laneWidth, _difficulty, _obstacleTable, _state);
             }
@@ -105,6 +115,13 @@ namespace Runner.Core
 
         private void Update()
         {
+            // Sentinel for a mid-play recompile having wiped runtime state. One property read
+            // per frame in the normal case; no allocation either way.
+            if (_spawner != null && !_spawner.IsBuilt)
+            {
+                EnsureInitialized();
+            }
+
             switch (_gameState)
             {
                 case GameState.Ready:
