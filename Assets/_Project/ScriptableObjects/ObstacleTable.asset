@@ -1,0 +1,59 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b471634c4e9c324bb8205a532d2a2b8, type: 3}
+  m_Name: ObstacleTable
+  m_EditorClassIdentifier: Assembly-CSharp::Runner.Config.ObstacleTable
+  _patterns:
+  - LaneMask: 1
+    Kind: 0
+    Weight: 1
+    MinDistance: 0
+  - LaneMask: 2
+    Kind: 0
+    Weight: 1
+    MinDistance: 0
+  - LaneMask: 4
+    Kind: 0
+    Weight: 1
+    MinDistance: 0
+  - LaneMask: 2
+    Kind: 2
+    Weight: 0.8
+    MinDistance: 60
+  - LaneMask: 1
+    Kind: 2
+    Weight: 0.6
+    MinDistance: 60
+  - LaneMask: 4
+    Kind: 2
+    Weight: 0.6
+    MinDistance: 60
+  - LaneMask: 7
+    Kind: 0
+    Weight: 0.5
+    MinDistance: 150
+  - LaneMask: 2
+    Kind: 1
+    Weight: 0.7
+    MinDistance: 200
+  - LaneMask: 7
+    Kind: 1
+    Weight: 0.4
+    MinDistance: 320
+  - LaneMask: 3
+    Kind: 2
+    Weight: 0.5
+    MinDistance: 420
+  - LaneMask: 6
+    Kind: 2
+    Weight: 0.5
+    MinDistance: 420
