@@ -1,0 +1,79 @@
+# ---------------------------------------------
+# Unity generated / machine-local folders
+# ---------------------------------------------
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Asset meta data should only be ignored when the corresponding asset is also ignored
+!/[Aa]ssets/**/*.meta
+
+# Never ignore these — they ARE the project
+# Assets/
+# Packages/
+# ProjectSettings/
+
+# ---------------------------------------------
+# Addressables local build output
+# ---------------------------------------------
+[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+[Aa]ssets/[Ss]treamingAssets/aa.meta
+[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# ---------------------------------------------
+# IDE / editor cruft
+# ---------------------------------------------
+.vs/
+.vscode/
+.idea/
+.gradle/
+ExportedObj/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.slnx
+.vsconfig
+
+# ---------------------------------------------
+# Build artifacts
+# ---------------------------------------------
+*.apk
+*.aab
+*.unitypackage
+*.app
+crashlytics-build.properties
+
+# ---------------------------------------------
+# Secrets — keep keystores and API keys OUT of git
+# ---------------------------------------------
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+secrets.env
+/Assets/Plugins/Android/keystore/
+
+# ---------------------------------------------
+# OS junk
+# ---------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+sysinfo.txt
