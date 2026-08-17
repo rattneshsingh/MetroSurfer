@@ -114,6 +114,7 @@ namespace Runner.Player
         private bool _isSliding;
         private float _slideTimer;
         private float _flinchTimer;
+        private float _lastActionTime = float.NegativeInfinity;
 
         private float _jumpBufferedAt = float.NegativeInfinity;
         private float _slideBufferedAt = float.NegativeInfinity;
@@ -142,6 +143,13 @@ namespace Runner.Player
 
         /// <summary>True while the horizontal snap is still running.</summary>
         public bool IsChangingLanes => _laneTimer < _laneSnapDuration;
+
+        /// <summary>
+        /// Seconds since the player last committed to a jump or a roll. Used to judge whether a
+        /// collision was a mistimed reaction or no reaction at all — an attempt that finished a
+        /// fraction too early is still an attempt.
+        /// </summary>
+        public float TimeSinceAction => Time.time - _lastActionTime;
 
         /// <summary>Current horizontal position. The pursuer lines up with it.</summary>
         public float LaneX => _x;
@@ -236,6 +244,7 @@ namespace Runner.Player
             _jumpBufferedAt = float.NegativeInfinity;
             _slideBufferedAt = float.NegativeInfinity;
             _flinchTimer = 0f;
+            _lastActionTime = float.NegativeInfinity;
 
             EndSlide();
 
@@ -332,6 +341,7 @@ namespace Runner.Player
                 _verticalVelocity = _jumpVelocity;
                 _isGrounded = false;
                 _jumpConsumed = true;
+                _lastActionTime = Time.time;
                 _jumpBufferedAt = float.NegativeInfinity;
             }
 
@@ -422,6 +432,7 @@ namespace Runner.Player
 
         private void StartSlide()
         {
+            _lastActionTime = Time.time;
             _isSliding = true;
             _slideTimer = _slideDuration;
             ApplyHitbox(_slidingHitboxCenter, _slidingHitboxSize);

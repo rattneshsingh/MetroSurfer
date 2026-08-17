@@ -1,0 +1,169 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d4554341e15bbdc4eba60c2162b8c462, type: 3}
+  m_Name: ObstacleCatalog
+  m_EditorClassIdentifier: Runner::Runner.Config.ObstacleCatalog
+  _definitions:
+  - Kind: 0
+    Form: 0
+    Size: {x: 1.6, y: 0.5, z: 0.7}
+    BaseHeight: 0
+    Tint: 0
+    Drift: -1
+    ClosesLane: 0
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 1
+    Form: 0
+    Size: {x: 1.6, y: 1.45, z: 0.7}
+    BaseHeight: 0.55
+    Tint: 0
+    Drift: -1
+    ClosesLane: 0
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 2
+    Form: 0
+    Size: {x: 1.6, y: 2.2, z: 0.7}
+    BaseHeight: 0
+    Tint: 0
+    Drift: -1
+    ClosesLane: 1
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 9
+    Form: 0
+    Size: {x: 8, y: 3.5, z: 1.2}
+    BaseHeight: 1.05
+    Tint: 0
+    Drift: -1
+    ClosesLane: 0
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 3
+    Form: 2
+    Size: {x: 1.8, y: 0.25, z: 3}
+    BaseHeight: 0
+    Tint: 0
+    Drift: -1
+    ClosesLane: 0
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 4
+    Form: 1
+    Size: {x: 1.8, y: 1.2, z: 4.6}
+    BaseHeight: 0
+    Tint: 0
+    Drift: -1
+    ClosesLane: 0
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 6
+    Form: 1
+    Size: {x: 1.8, y: 1.2, z: 4.6}
+    BaseHeight: 0
+    Tint: 0
+    Drift: 0
+    ClosesLane: 0
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 7
+    Form: 1
+    Size: {x: 1.8, y: 1.2, z: 4.6}
+    BaseHeight: 0
+    Tint: 0
+    Drift: 1
+    ClosesLane: 0
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 10
+    Form: 1
+    Size: {x: 1.8, y: 1.4, z: 4.6}
+    BaseHeight: 0
+    Tint: 0
+    Drift: 2
+    ClosesLane: 0
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 5
+    Form: 1
+    Size: {x: 1.8, y: 2.4, z: 4.5}
+    BaseHeight: 0
+    Tint: 0
+    Drift: -1
+    ClosesLane: 1
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6
+  - Kind: 8
+    Form: 3
+    Size: {x: 2, y: 0.08, z: 4.6}
+    BaseHeight: 0
+    Tint: 1
+    Drift: -1
+    ClosesLane: 1
+    Prefab: {fileID: 0}
+    PoolCapacity: 0
+    RoofSafeInset: 0.25
+    RampRun: 3
+    RampRise: 1.2
+    RampThickness: 0.25
+    PitTriggerHeight: 0.6

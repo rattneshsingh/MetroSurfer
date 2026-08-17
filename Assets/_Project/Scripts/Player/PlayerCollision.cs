@@ -20,6 +20,10 @@ namespace Runner.Player
         [Tooltip("Read to decide whether a hit was a stumble or a flat-footed collision.")]
         [SerializeField] private LaneController _lane;
 
+        [Tooltip("A jump or roll this recently still counts as reacting, even if it has already " +
+                 "finished. Mistiming an attempt should cost ground, not the run.")]
+        [SerializeField] private float _reactionWindow = 0.35f;
+
         private int _obstacleLayer = -1;
         private int _coinLayer = -1;
         private bool _armed = true;
@@ -71,7 +75,12 @@ namespace Runner.Player
                 return HitSeverity.HeadOn;
             }
 
-            bool reacting = _lane.IsChangingLanes || !_lane.IsGrounded || _lane.IsSliding;
+            bool reacting =
+                _lane.IsChangingLanes ||
+                !_lane.IsGrounded ||
+                _lane.IsSliding ||
+                _lane.TimeSinceAction <= _reactionWindow;
+
             return reacting ? HitSeverity.Glancing : HitSeverity.HeadOn;
         }
 

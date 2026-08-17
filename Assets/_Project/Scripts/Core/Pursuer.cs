@@ -11,11 +11,13 @@ namespace Runner.Core
     /// </remarks>
     public sealed class Pursuer : MonoBehaviour
     {
-        [Tooltip("Z when he is on your heels. Just behind the player.")]
-        [SerializeField] private float _nearZ = -1.6f;
+        [Tooltip("Z when he is on your heels. Just behind the player and large in frame.")]
+        [SerializeField] private float _nearZ = -1.2f;
 
-        [Tooltip("Z when he has given up. Behind the camera, so he leaves frame entirely.")]
-        [SerializeField] private float _farZ = -9f;
+        [Tooltip("Z at his most distant while still pursuing. Must stay clearly in front of the " +
+                 "camera: anything past it is invisible, and anything very close to it fills the " +
+                 "screen. With the camera at -6.4 the usable band is roughly -1 to -4.5.")]
+        [SerializeField] private float _farZ = -4.5f;
 
         [Tooltip("How quickly he slides to his new position. Snapping reads as teleporting.")]
         [SerializeField] private float _followSharpness = 9f;
@@ -33,13 +35,27 @@ namespace Runner.Core
         {
             _transform = transform;
             _currentZ = _farZ;
-            Show(false);
+
+            // Set explicitly rather than through Show: the flag starts matching, so the guard
+            // there would skip the call and leave him on screen from the first frame.
+            if (_visual != null)
+            {
+                _visual.gameObject.SetActive(false);
+            }
+
+            _shown = false;
         }
 
         public void Reset()
         {
             _currentZ = _farZ;
-            Show(false);
+
+            if (_visual != null)
+            {
+                _visual.gameObject.SetActive(false);
+            }
+
+            _shown = false;
 
             if (_transform == null)
             {
