@@ -35,8 +35,22 @@ namespace Runner.Core
         [SerializeField] private StateConfig _state;
 
         [Header("Scoring")]
-        [SerializeField] private float _pointsPerMetre = 1f;
+        [Tooltip("Score comes only from coins. Distance is still tracked, but it drives " +
+                 "difficulty rather than the scoreboard.")]
         [SerializeField] private int _pointsPerCoin = 5;
+
+        [Tooltip("Extra multiplier per unit of height, applied when the coin is taken. Coins " +
+                 "sit on the roofs, so this is what makes the climb worth the risk.")]
+        [SerializeField] private float _multiplierPerHeightUnit = 0.6f;
+
+        [Header("Streak")]
+        [Tooltip("Coins needed to climb one multiplier tier.")]
+        [SerializeField] private int _coinsPerStreakTier = 8;
+        [SerializeField] private int _maxStreakMultiplier = 5;
+
+        [Tooltip("Metres without a coin before the streak resets. Distance, not seconds — a " +
+                 "timer would be far kinder early in a run than late.")]
+        [SerializeField] private float _streakBreakDistance = 60f;
 
         [Header("Feel")]
         [Tooltip("Beat between the hit landing and the game-over panel appearing.")]
@@ -50,12 +64,12 @@ namespace Runner.Core
         private GameState _gameState = GameState.Ready;
         private float _distance;
         private float _speed;
-        private int _coinScore;
-        private int _score;
         private float _deathTimer;
+        private ScoreKeeper _scoring;
 
         public GameState State => _gameState;
-        public int Score => _score;
+        public int Score => _scoring == null ? 0 : _scoring.Score;
+        public int Multiplier => _scoring == null ? 1 : _scoring.Multiplier;
         public float Distance => _distance;
         public float Speed => _speed;
 
@@ -76,6 +90,16 @@ namespace Runner.Core
         {
             ResolveTuningData();
 
+            if (_scoring == null)
+            {
+                _scoring = new ScoreKeeper(
+                    _pointsPerCoin,
+                    _coinsPerStreakTier,
+                    _maxStreakMultiplier,
+                    _streakBreakDistance,
+                    _multiplierPerHeightUnit);
+            }
+
             if (_playerCollision == null && _player != null)
             {
                 _player.Configure(_laneWidth);
@@ -90,7 +114,8 @@ namespace Runner.Core
 
             if (_spawner != null && !_spawner.IsBuilt)
             {
-                _spawner.Initialize(_laneWidth, _difficulty, _obstacleTable, _state);
+                _spawner.Initialize(_laneWidth, _difficulty, _obstacleTable, _state,
+                    _player != null ? _player.Jump : default);
             }
 
             if (_hud != null)
@@ -141,9 +166,8 @@ namespace Runner.Core
         public void Restart()
         {
             _distance = 0f;
-            _coinScore = 0;
-            _score = 0;
             _speed = _difficulty.StartSpeed;
+            _scoring.Reset();
 
             // Pools reset in place. Reloading the scene would pay the whole warm-up cost again
             // and hitch on exactly the frame the player is most impatient.
@@ -197,12 +221,9 @@ namespace Runner.Core
                 _spawner.Tick(dt, _speed, _distance);
             }
 
-            // Integer cast, no string work — the HUD decides whether anything actually changed.
-            _score = _coinScore + (int)(_distance * _pointsPerMetre);
-
-            if (_hud != null)
+            if (_scoring.Tick(_distance) && _hud != null)
             {
-                _hud.SetScore(_score);
+                _hud.SetMultiplier(_scoring.Multiplier);
             }
         }
 
@@ -214,7 +235,7 @@ namespace Runner.Core
 
                 if (_deathTimer <= 0f && _hud != null)
                 {
-                    _hud.ShowGameOver(_score);
+                    _hud.ShowGameOver(Score);
                 }
 
                 // Input is ignored during the death beat on purpose — restarting mid-freeze
@@ -241,7 +262,8 @@ namespace Runner.Core
 
             if (_hud != null)
             {
-                _hud.SetScore(_score);
+                _hud.SetScore(Score);
+                _hud.SetMultiplier(Multiplier);
                 _hud.ShowReady();
             }
         }
@@ -264,7 +286,16 @@ namespace Runner.Core
 
         private void OnCoinCollected(int value)
         {
-            _coinScore += value * _pointsPerCoin;
+            // Height is read at the moment of pickup, so a coin taken off a roof is worth more
+            // than the same coin on the street.
+            float height = _player == null ? 0f : _player.SupportHeight;
+            _scoring.Collect(value, height, _distance);
+
+            if (_hud != null)
+            {
+                _hud.SetScore(_scoring.Score);
+                _hud.SetMultiplier(_scoring.Multiplier);
+            }
         }
 
         /// <summary>

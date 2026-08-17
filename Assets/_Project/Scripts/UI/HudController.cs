@@ -11,6 +11,7 @@ namespace Runner.UI
     public sealed class HudController : MonoBehaviour
     {
         [SerializeField] private TMP_Text _scoreText;
+        [SerializeField] private TMP_Text _multiplierText;
         [SerializeField] private GameObject _readyPanel;
         [SerializeField] private GameObject _gameOverPanel;
         [SerializeField] private TMP_Text _finalScoreText;
@@ -18,6 +19,7 @@ namespace Runner.UI
 
         private System.Action _onRestart;
         private int _shownScore = int.MinValue;
+        private int _shownMultiplier = int.MinValue;
 
         public void BindRestart(System.Action onRestart)
         {
@@ -55,6 +57,31 @@ namespace Runner.UI
 
             _shownScore = score;
             _scoreText.SetText("{0:0}", score);
+        }
+
+        /// <summary>
+        /// Hidden at x1. A multiplier that is always on screen reads as decoration; one that
+        /// appears when you earn it reads as something you can lose.
+        /// </summary>
+        public void SetMultiplier(int multiplier)
+        {
+            if (multiplier == _shownMultiplier || _multiplierText == null)
+            {
+                return;
+            }
+
+            _shownMultiplier = multiplier;
+
+            bool earned = multiplier > 1;
+            if (_multiplierText.gameObject.activeSelf != earned)
+            {
+                _multiplierText.gameObject.SetActive(earned);
+            }
+
+            if (earned)
+            {
+                _multiplierText.SetText("x{0:0}", multiplier);
+            }
         }
 
         public void ShowReady()

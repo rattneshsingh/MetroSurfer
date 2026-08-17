@@ -36,12 +36,25 @@ namespace Runner.Utils
             return material;
         }
 
+        /// <summary>What to do with the collider the primitive ships with.</summary>
+        public enum ColliderMode
+        {
+            /// <summary>Strip it. Decoration only.</summary>
+            None,
+
+            /// <summary>Trigger, for lethal volumes.</summary>
+            Trigger,
+
+            /// <summary>Solid, for surfaces the ground probe raycasts against.</summary>
+            Solid
+        }
+
         public static GameObject CreateCube(
             string name,
             Vector3 size,
             Material material,
             int layer,
-            bool triggerCollider,
+            ColliderMode colliderMode,
             bool castShadows)
         {
             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -58,13 +71,21 @@ namespace Runner.Utils
             renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
 
             BoxCollider collider = go.GetComponent<BoxCollider>();
-            if (triggerCollider)
+            switch (colliderMode)
             {
-                collider.isTrigger = true;
-            }
-            else
-            {
-                Object.Destroy(collider);
+                case ColliderMode.Trigger:
+                    collider.isTrigger = true;
+                    break;
+
+                case ColliderMode.Solid:
+                    collider.isTrigger = false;
+                    break;
+
+                default:
+                    // Warm-up runs from EditMode tests and editor tooling as well as from play,
+                    // so this cannot use the deferred Destroy.
+                    ObjectUtility.Destroy(collider);
+                    break;
             }
 
             return go;

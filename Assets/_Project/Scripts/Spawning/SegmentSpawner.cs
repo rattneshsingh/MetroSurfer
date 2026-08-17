@@ -22,10 +22,7 @@ namespace Runner.Spawning
     /// </remarks>
     public sealed class SegmentSpawner : MonoBehaviour
     {
-        private const int LaneCount = 3;
-
-        /// <summary>Saturation point for the row-gap counter. Prevents int overflow on a long run.</summary>
-        private const int RowGapCeiling = 1000;
+        private const int LaneCount = TrackGenerator.LaneCount;
 
         [Header("Track")]
         [Tooltip("Overwritten by GameManager so the track and the player can never disagree.")]
@@ -61,6 +58,9 @@ namespace Runner.Spawning
         [SerializeField] private float _coinHeight = 0.9f;
         [SerializeField] private int _coinValue = 1;
 
+        [Tooltip("Coins laid along a jump arc across a gap. More reads as a smoother line.")]
+        [SerializeField] private int _arcCoinCount = 7;
+
         [Header("Grey-cube geometry (Phase 0 stand-ins)")]
         [SerializeField] private Vector3 _lowObstacleSize = new Vector3(1.6f, 0.5f, 0.7f);
         [SerializeField] private Vector3 _highObstacleSize = new Vector3(1.6f, 1.45f, 0.7f);
@@ -70,6 +70,71 @@ namespace Runner.Spawning
 
         [SerializeField] private Vector3 _fullObstacleSize = new Vector3(1.6f, 2.2f, 0.7f);
         [SerializeField] private Vector3 _coinSize = new Vector3(0.4f, 0.4f, 0.4f);
+
+        [Header("The traffic stack")]
+        [Tooltip("Tier one. Roof is landable; everything below the inset is lethal.")]
+        [SerializeField] private Vector3 _truckSize = new Vector3(1.8f, 1.2f, 4.6f);
+
+        [Tooltip("Tier two. Out of reach from the street — you get up here off a truck roof.")]
+        [SerializeField] private Vector3 _trainSize = new Vector3(1.8f, 2.4f, 4.5f);
+
+        [Tooltip("How far below the roof the lethal volume stops. This gap is what makes " +
+                 "landing on top survivable while hitting the side is not.")]
+        [SerializeField] private float _roofSafeInset = 0.25f;
+
+        [SerializeField] private float _rampWidth = 1.8f;
+        [SerializeField] private float _rampRun = 3f;
+        [SerializeField] private float _rampRise = 1.2f;
+        [SerializeField] private float _rampThickness = 0.25f;
+
+        [Header("Moving traffic")]
+        [Tooltip("How far a drifting truck surges ahead and drops back, in metres.")]
+        [SerializeField] private float _movingTruckAmplitude = 2.2f;
+
+        [Tooltip("Seconds for one full surge-and-drop cycle.")]
+        [SerializeField] private float _movingTruckPeriod = 3.2f;
+
+        [Tooltip("Closing speed of oncoming traffic, on top of the world's own scroll.")]
+        [SerializeField] private float _oncomingSpeed = 14f;
+        [SerializeField] private float _oncomingMaxTravel = 90f;
+
+        [Header("Stopping bus")]
+        [SerializeField] private Vector3 _busSize = new Vector3(1.8f, 1.4f, 4.6f);
+
+        [Tooltip("Speed it rolls along at before braking. Slower than the player, so you close " +
+                 "on it gradually and have time to judge the lane safe.")]
+        [SerializeField] private float _busCruiseSpeed = 6f;
+
+        [Tooltip("Distance ahead of the player at which it starts braking. This is the whole " +
+                 "fairness budget — it must leave time to read the brake lights and swerve.")]
+        [SerializeField] private float _busBrakeTriggerZ = 45f;
+
+        [SerializeField] private float _busBrakeDuration = 0.9f;
+
+        [Tooltip("Brake lights. Without a tell this obstacle is a gotcha rather than a test.")]
+        [SerializeField] private Color _brakeColor = new Color(0.72f, 0.16f, 0.12f);
+
+        [Header("Pits")]
+        [SerializeField] private Vector3 _pitSize = new Vector3(2f, 0.08f, 4.6f);
+
+        [Tooltip("Height of the kill volume over a pit. Must catch a runner and a roll, and " +
+                 "must sit below the jump arc.")]
+        [SerializeField] private float _pitTriggerHeight = 0.6f;
+
+        [SerializeField] private Color _pitColor = new Color(0.04f, 0.04f, 0.05f);
+
+        [Header("Underpass")]
+        [Tooltip("Height of the gap you run through. Must clear a standing runner on the street " +
+                 "and catch one standing on a truck roof.")]
+        [SerializeField] private float _underpassClearance = 1.05f;
+
+        [Tooltip("Solid height above the gap. Tall enough that nothing can jump over it, " +
+                 "including from a train roof.")]
+        [SerializeField] private float _underpassHeight = 3.5f;
+
+        [Tooltip("Spans the whole road, so it is placed as one object in the centre lane.")]
+        [SerializeField] private float _underpassWidth = 8f;
+        [SerializeField] private float _underpassDepth = 1.2f;
 
         [Header("Palette — a StateConfig overrides these at runtime")]
         [SerializeField] private Color _groundColor = new Color(0.32f, 0.32f, 0.34f);
@@ -89,6 +154,7 @@ namespace Runner.Spawning
         [Header("Layers")]
         [SerializeField] private string _obstacleLayerName = "Obstacle";
         [SerializeField] private string _coinLayerName = "Coin";
+        [SerializeField] private string _surfaceLayerName = "Surface";
 
         private DifficultyCurve _difficulty;
         private ObstacleTable _obstacleTable;
@@ -104,42 +170,56 @@ namespace Runner.Spawning
         private ObjectPool<Obstacle> _lowPool;
         private ObjectPool<Obstacle> _highPool;
         private ObjectPool<Obstacle> _fullPool;
+        private ObjectPool<Obstacle> _rampPool;
+        private ObjectPool<Obstacle> _truckPool;
+        private ObjectPool<Obstacle> _trainPool;
+        private ObjectPool<Obstacle> _movingTruckPool;
+        private ObjectPool<Obstacle> _oncomingTruckPool;
+        private ObjectPool<Obstacle> _pitPool;
+        private ObjectPool<Obstacle> _underpassPool;
+        private ObjectPool<Obstacle> _busPool;
         private ObjectPool<Coin> _coinPool;
 
         private Material _groundMaterial;
         private Material _obstacleMaterial;
         private Material _coinMaterial;
+        private Material _pitMaterial;
+        private Material _brakeMaterial;
 
         private int _obstacleLayer;
         private int _coinLayer;
+        private int _surfaceLayer;
 
-        private System.Random _rng;
-        private int _rowsGenerated;
-        private int _rowsSinceHardRow;
-        private int _coinLane = 1;
+
+        private TrackGenerator _generator;
+        private JumpProfile _jump;
+        private System.Random _presentationRng;
 
         private bool _built;
-        private bool _warnedRngRebuilt;
 
         /// <summary>False after a mid-play recompile has wiped the runtime state.</summary>
-        public bool IsBuilt => _built && _segments != null && _lowPool != null;
-
-        /// <summary>Zero when no sequence is assigned, which simply means no scripted opening.</summary>
-        private int IntroRowCount => _introSequence == null ? 0 : _introSequence.Count;
+        public bool IsBuilt => _built && _segments != null && _lowPool != null && _generator != null;
 
         /// <summary>Builds every pool and the segment ring. Call once, before the first run.</summary>
-        public void Initialize(float laneWidth, DifficultyCurve difficulty, ObstacleTable obstacleTable, StateConfig state)
+        public void Initialize(
+            float laneWidth,
+            DifficultyCurve difficulty,
+            ObstacleTable obstacleTable,
+            StateConfig state,
+            JumpProfile jump)
         {
+            _jump = jump;
             _laneWidth = laneWidth;
             _difficulty = difficulty;
             _obstacleTable = obstacleTable;
-
-            _rng = new System.Random(_seed);
 
             if (_introSequence == null)
             {
                 _introSequence = IntroSequence.CreateDefault();
             }
+
+            _presentationRng = new System.Random(_seed);
+            _generator = new TrackGenerator(_seed, _introSequence, obstacleTable, _minRowGapAfterHardRow);
 
             ApplyPalette(state);
             ResolveLayers();
@@ -169,10 +249,8 @@ namespace Runner.Spawning
                 return;
             }
 
-            _rng = new System.Random(_seed);
-            _rowsGenerated = 0;
-            _rowsSinceHardRow = RowGapCeiling;
-            _coinLane = 1;
+            _generator.Reset();
+            _presentationRng = new System.Random(_seed);
             _head = 0;
 
             // One segment starts behind the player so the track does not visibly begin at their feet.
@@ -212,6 +290,7 @@ namespace Runner.Spawning
                 t.localPosition = position;
             }
 
+            TickMovingObstacles(deltaTime);
             CullPassedObstacles();
 
             // At most one segment passes the despawn line per frame at any sane speed, but loop
@@ -233,6 +312,42 @@ namespace Runner.Spawning
         /// ahead have nothing behind the player yet, and segments fully past it were already
         /// dealt with on an earlier frame. So this is one segment's worth of work, not fourteen.
         /// </summary>
+        /// <summary>
+        /// Sweeps the moving-truck pool once per frame. Capacity is small and the check is two
+        /// array reads, so this costs less than giving every truck its own Update.
+        /// </summary>
+        private void TickMovingObstacles(float deltaTime)
+        {
+
+            TickDriftPool(_movingTruckPool, deltaTime, null);
+            TickDriftPool(_oncomingTruckPool, deltaTime, null);
+            TickDriftPool(_busPool, deltaTime, _brakeMaterial);
+        }
+
+        private static void TickDriftPool(ObjectPool<Obstacle> pool, float deltaTime, Material alertMaterial)
+        {
+            if (pool == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < pool.Capacity; i++)
+            {
+                if (!pool.TryGetActive(i, out Obstacle obstacle) || obstacle.Drift == null)
+                {
+                    continue;
+                }
+
+                obstacle.Drift.Tick(deltaTime);
+
+                // Consumed rather than polled, so the swap costs one call on one frame.
+                if (alertMaterial != null && obstacle.Drift.ConsumeBrakeStarted())
+                {
+                    obstacle.SetMaterial(alertMaterial);
+                }
+            }
+        }
+
         private void CullPassedObstacles()
         {
             for (int i = 0; i < _segments.Length; i++)
@@ -273,127 +388,101 @@ namespace Runner.Spawning
         {
             float density = _difficulty.EvaluateObstacleDensity(runDistanceAtSegmentStart);
             float coinChance = _difficulty.EvaluateCoinChance(runDistanceAtSegmentStart);
+            float speed = _difficulty.EvaluateSpeed(runDistanceAtSegmentStart);
 
             for (int row = 0; row < _rowsPerSegment; row++)
             {
                 float localZ = row * _rowSpacing + _rowSpacing * 0.5f;
                 float rowDistance = runDistanceAtSegmentStart + localZ;
 
-                if (_rowsGenerated < IntroRowCount)
+                RowPlan plan = _generator.NextRow(rowDistance, density, coinChance);
+                Realise(segment, plan, localZ, speed);
+            }
+        }
+
+        /// <summary>
+        /// Turns a decision into objects. Everything above this line is testable without a
+        /// scene; everything below it needs one.
+        /// </summary>
+        private void Realise(Segment segment, RowPlan plan, float localZ, float speed)
+        {
+            if (plan.HasObstacles)
+            {
+                PlaceRow(segment, plan.LaneMask, plan.Kind, localZ);
+            }
+
+            if (!plan.HasCoins)
+            {
+                return;
+            }
+
+            if (plan.CoinArc)
+            {
+                EmitCoinArc(segment, plan.CoinLane, localZ, RoofHeightFor(plan.Kind), speed);
+                return;
+            }
+
+            float height = plan.CoinsOnRoof
+                ? RoofHeightFor(plan.Kind) + _coinHeight
+                : _coinHeight;
+
+            EmitCoinTrail(segment, plan.CoinLane, localZ, height);
+        }
+
+        /// <summary>
+        /// Lays coins along the exact parabola of a well-timed jump across this gap.
+        /// </summary>
+        /// <remarks>
+        /// The arc is computed, never authored, because its shape depends on run speed: the same
+        /// jump covers about 6.5m at the starting pace and roughly 16m at full tilt, so a drawn
+        /// arc would be wrong everywhere except one speed. Deriving it from the live jump profile
+        /// and the predicted speed also means the line is honest — if the coins say the jump is
+        /// makeable, it is.
+        /// </remarks>
+        private void EmitCoinArc(Segment segment, int lane, float localZ, float launchHeight, float speed)
+        {
+            if (!_jump.IsValid || _arcCoinCount < 2)
+            {
+                EmitCoinTrail(segment, lane, localZ, launchHeight + _coinHeight);
+                return;
+            }
+
+            float airTime = _jump.AirTime;
+            float span = speed * airTime;
+            float x = LaneToX(lane);
+            float startZ = localZ - span * 0.5f;
+
+            for (int i = 0; i < _arcCoinCount; i++)
+            {
+                if (!segment.HasCoinRoom)
                 {
-                    PopulateIntroRow(segment, localZ);
-                }
-                else
-                {
-                    PopulateProceduralRow(segment, localZ, rowDistance, density, coinChance);
+                    return;
                 }
 
-                _rowsGenerated++;
+                float t = airTime * i / (_arcCoinCount - 1);
+
+                Coin coin = _coinPool.Get(out int handle);
+
+                Transform transformCache = coin.transform;
+                transformCache.SetParent(segment.Root, false);
+                transformCache.localPosition = new Vector3(
+                    x,
+                    launchHeight + _coinHeight + _jump.HeightAt(t),
+                    startZ + speed * t);
+
+                segment.AddCoin(coin, handle);
             }
         }
 
-        /// <summary>Scripted row. No dice rolled — the opening has to be identical every run.</summary>
-        private void PopulateIntroRow(Segment segment, float localZ)
+        private void PlaceRow(Segment segment, int mask, ObstacleKind kind, float localZ)
         {
-            IntroRow row = _introSequence.Get(_rowsGenerated);
-
-            int occupiedMask = row.LaneMask == 0
-                ? 0
-                : PlaceRow(segment, row.LaneMask, row.Kind, localZ);
-
-            // The sequence paces itself, so procedural generation starts with a clean counter
-            // the moment it takes over.
-            _rowsSinceHardRow = RowGapCeiling;
-
-            if (row.Coins)
-            {
-                PlaceCoins(segment, localZ, occupiedMask);
-            }
-        }
-
-        private void PopulateProceduralRow(
-            Segment segment, float localZ, float rowDistance, float density, float coinChance)
-        {
-            int occupiedMask = 0;
-
-            if (_rowsSinceHardRow >= _minRowGapAfterHardRow && Roll() < density)
-            {
-                occupiedMask = TryPlaceRow(segment, localZ, rowDistance);
-            }
-            else
-            {
-                // Every row must advance the gap counter, including skipped ones — otherwise a
-                // forced breather row never expires and obstacles stop spawning for the rest
-                // of the run.
-                BumpRowGap();
-            }
-
-            if (Roll() < coinChance)
-            {
-                PlaceCoins(segment, localZ, occupiedMask);
-            }
-        }
-
-        /// <summary>Returns the lane mask that ended up occupied, or 0 if nothing spawned.</summary>
-        private int TryPlaceRow(Segment segment, float localZ, float rowDistance)
-        {
-            if (_obstacleTable == null || !_obstacleTable.TryPick(rowDistance, Roll(), out ObstaclePattern pattern))
-            {
-                BumpRowGap();
-                return 0;
-            }
-
-            int mask = pattern.LaneMask & ObstaclePattern.AllLanesMask;
-
-            // Hard floor on fairness: a Full row must never take every lane. The table filters
-            // this already, but the rule is cheap enough to enforce twice rather than ship a
-            // run that is impossible by construction.
-            if (pattern.Kind == ObstacleKind.Full && mask == ObstaclePattern.AllLanesMask)
-            {
-                mask &= ~(1 << _rng.Next(0, LaneCount));
-            }
-
-            if (mask == 0)
-            {
-                BumpRowGap();
-                return 0;
-            }
-
-            PlaceRow(segment, mask, pattern.Kind, localZ);
-
-            // Only a Full row forces a lane change, so only a Full row earns a breather after it.
-            if (pattern.Kind == ObstacleKind.Full)
-            {
-                _rowsSinceHardRow = 0;
-            }
-            else
-            {
-                BumpRowGap();
-            }
-
-            return mask;
-        }
-
-        private void BumpRowGap()
-        {
-            if (_rowsSinceHardRow < RowGapCeiling)
-            {
-                _rowsSinceHardRow++;
-            }
-        }
-
-        /// <summary>Fills every lane in the mask. Returns the mask, for coin placement to avoid.</summary>
-        private int PlaceRow(Segment segment, int mask, ObstacleKind kind, float localZ)
-        {
-            for (int lane = 0; lane < LaneCount; lane++)
+            for (int lane = 0; lane < TrackGenerator.LaneCount; lane++)
             {
                 if ((mask & (1 << lane)) != 0)
                 {
                     PlaceObstacle(segment, lane, kind, localZ);
                 }
             }
-
-            return mask;
         }
 
         private void PlaceObstacle(Segment segment, int lane, ObstacleKind kind, float localZ)
@@ -410,19 +499,29 @@ namespace Runner.Spawning
             t.SetParent(segment.Root, false);
             t.localPosition = new Vector3(LaneToX(lane), CenterHeightFor(kind), localZ);
 
+            if (obstacle.Drift != null)
+            {
+                if (kind == ObstacleKind.OncomingTruck)
+                {
+                    obstacle.Drift.BeginApproach(_oncomingSpeed, _oncomingMaxTravel);
+                }
+                else if (kind == ObstacleKind.StoppingBus)
+                {
+                    obstacle.Drift.BeginBraking(_busCruiseSpeed, _busBrakeTriggerZ, _busBrakeDuration);
+                }
+                else
+                {
+                    // Phase varies per placement so a convoy ripples rather than moving as a block.
+                    obstacle.Drift.BeginOscillation(_movingTruckAmplitude, _movingTruckPeriod, Roll() * Mathf.PI * 2f);
+                }
+            }
+
             segment.AddObstacle(obstacle, handle, kind, localZ);
         }
 
-        private void PlaceCoins(Segment segment, float localZ, int occupiedMask)
+        private void EmitCoinTrail(Segment segment, int lane, float localZ, float height)
         {
-            int lane = PickCoinLane(occupiedMask);
-            if (lane < 0)
-            {
-                return;
-            }
-
-            _coinLane = lane;
-            float x = LaneToX(_coinLane);
+            float x = LaneToX(lane);
             float startZ = localZ - (_coinsPerRow - 1) * _coinSpacing * 0.5f;
 
             for (int i = 0; i < _coinsPerRow; i++)
@@ -436,43 +535,27 @@ namespace Runner.Spawning
 
                 Transform t = coin.transform;
                 t.SetParent(segment.Root, false);
-                t.localPosition = new Vector3(x, _coinHeight, startZ + i * _coinSpacing);
+                t.localPosition = new Vector3(x, height, startZ + i * _coinSpacing);
 
                 segment.AddCoin(coin, handle);
             }
         }
 
-        /// <summary>
-        /// Deliberate, not random. Preference order is: stay in the lane the trail is already
-        /// in, else the centre lane, else whatever is open. Randomising this made coins look
-        /// scattered rather than like a path worth following.
-        /// </summary>
-        private int PickCoinLane(int occupiedMask)
+
+        /// <summary>Standable height of a piece, or zero if you cannot stand on it.</summary>
+        private float RoofHeightFor(ObstacleKind kind)
         {
-            const int CentreLane = LaneCount / 2;
-
-            if (IsLaneFree(occupiedMask, _coinLane))
+            switch (kind)
             {
-                return _coinLane;
+                case ObstacleKind.Truck:
+                case ObstacleKind.MovingTruck:
+                case ObstacleKind.OncomingTruck: return _truckSize.y;
+                case ObstacleKind.StoppingBus: return _busSize.y;
+                case ObstacleKind.Train: return _trainSize.y;
+                default: return 0f;
             }
-
-            if (IsLaneFree(occupiedMask, CentreLane))
-            {
-                return CentreLane;
-            }
-
-            for (int lane = 0; lane < LaneCount; lane++)
-            {
-                if (IsLaneFree(occupiedMask, lane))
-                {
-                    return lane;
-                }
-            }
-
-            return -1;
         }
 
-        private static bool IsLaneFree(int occupiedMask, int lane) => (occupiedMask & (1 << lane)) == 0;
 
         private void ReleaseContents(Segment segment)
         {
@@ -524,6 +607,14 @@ namespace Runner.Spawning
             {
                 case ObstacleKind.High: return _highPool;
                 case ObstacleKind.Full: return _fullPool;
+                case ObstacleKind.Ramp: return _rampPool;
+                case ObstacleKind.Truck: return _truckPool;
+                case ObstacleKind.Train: return _trainPool;
+                case ObstacleKind.MovingTruck: return _movingTruckPool;
+                case ObstacleKind.OncomingTruck: return _oncomingTruckPool;
+                case ObstacleKind.Pit: return _pitPool;
+                case ObstacleKind.Underpass: return _underpassPool;
+                case ObstacleKind.StoppingBus: return _busPool;
                 default: return _lowPool;
             }
         }
@@ -534,6 +625,20 @@ namespace Runner.Spawning
             {
                 case ObstacleKind.High: return _highObstacleCenterY;
                 case ObstacleKind.Full: return _fullObstacleSize.y * 0.5f;
+
+                // Ramps, trucks and trains are built upward from a root at street level, so
+                // their pivot is the ground rather than their centre.
+                case ObstacleKind.Ramp:
+                case ObstacleKind.Truck:
+                case ObstacleKind.Train:
+                case ObstacleKind.MovingTruck:
+                case ObstacleKind.OncomingTruck:
+                case ObstacleKind.StoppingBus:
+                case ObstacleKind.Pit: return 0f;
+
+                // Centre of the solid part, which starts at the top of the gap.
+                case ObstacleKind.Underpass: return _underpassClearance + _underpassHeight * 0.5f;
+
                 default: return _lowObstacleSize.y * 0.5f;
             }
         }
@@ -541,25 +646,18 @@ namespace Runner.Spawning
         private float LaneToX(int lane) => (lane - (LaneCount - 1) * 0.5f) * _laneWidth;
 
         /// <summary>
-        /// Safety net. A script recompile during Play mode wipes private non-serialized fields
-        /// without re-running Awake, which would otherwise null this mid-run. Re-seeding costs
-        /// determinism for the rest of that run, but a reproducible run beats a dead one.
+        /// Presentation randomness only — drift phase, nothing the generator depends on. The
+        /// null guard is a safety net for a script recompile during Play mode, which wipes
+        /// private non-serialized fields without re-running Awake.
         /// </summary>
         private float Roll()
         {
-            if (_rng == null)
+            if (_presentationRng == null)
             {
-                _rng = new System.Random(_seed);
-
-                if (!_warnedRngRebuilt)
-                {
-                    _warnedRngRebuilt = true;
-                    Debug.LogWarning($"[{nameof(SegmentSpawner)}] RNG was null and has been re-seeded. " +
-                                     "This normally means scripts recompiled during Play mode.", this);
-                }
+                _presentationRng = new System.Random(_seed);
             }
 
-            return (float)_rng.NextDouble();
+            return (float)_presentationRng.NextDouble();
         }
 
         private void OnDestroy()
@@ -569,14 +667,13 @@ namespace Runner.Spawning
             DestroyMaterial(_groundMaterial);
             DestroyMaterial(_obstacleMaterial);
             DestroyMaterial(_coinMaterial);
+            DestroyMaterial(_pitMaterial);
+            DestroyMaterial(_brakeMaterial);
         }
 
         private static void DestroyMaterial(Material material)
         {
-            if (material != null)
-            {
-                Destroy(material);
-            }
+            ObjectUtility.Destroy(material);
         }
 
         private void ApplyPalette(StateConfig state)
@@ -597,6 +694,14 @@ namespace Runner.Spawning
         {
             _obstacleLayer = LayerMask.NameToLayer(_obstacleLayerName);
             _coinLayer = LayerMask.NameToLayer(_coinLayerName);
+            _surfaceLayer = LayerMask.NameToLayer(_surfaceLayerName);
+
+            if (_surfaceLayer < 0)
+            {
+                Debug.LogError($"[{nameof(SegmentSpawner)}] Missing layer '{_surfaceLayerName}'. " +
+                               "Re-run Runner > Build Phase 0 Scene, or add it by hand.", this);
+                _surfaceLayer = 0;
+            }
 
             if (_obstacleLayer < 0 || _coinLayer < 0)
             {
@@ -614,13 +719,15 @@ namespace Runner.Spawning
             _groundMaterial = PrimitiveFactory.CreateSharedMaterial(_groundColor, "M_Ground");
             _obstacleMaterial = PrimitiveFactory.CreateSharedMaterial(_obstacleColor, "M_Obstacle");
             _coinMaterial = PrimitiveFactory.CreateSharedMaterial(_coinColor, "M_Coin");
+            _pitMaterial = PrimitiveFactory.CreateSharedMaterial(_pitColor, "M_Pit");
+            _brakeMaterial = PrimitiveFactory.CreateSharedMaterial(_brakeColor, "M_Brake");
         }
 
         private void BuildPools()
         {
             int obstacleCapacity = _obstaclePoolCapacityPerKind > 0
                 ? _obstaclePoolCapacityPerKind
-                : _activeSegmentCount * _rowsPerSegment * LaneCount;
+                : _activeSegmentCount * _rowsPerSegment;
 
             int coinCapacity = _coinPoolCapacity > 0
                 ? _coinPoolCapacity
@@ -629,6 +736,14 @@ namespace Runner.Spawning
             _lowPool = new ObjectPool<Obstacle>(CreateLowObstacle, _poolRoot, obstacleCapacity, "Obstacle.Low");
             _highPool = new ObjectPool<Obstacle>(CreateHighObstacle, _poolRoot, obstacleCapacity, "Obstacle.High");
             _fullPool = new ObjectPool<Obstacle>(CreateFullObstacle, _poolRoot, obstacleCapacity, "Obstacle.Full");
+            _rampPool = new ObjectPool<Obstacle>(CreateRamp, _poolRoot, obstacleCapacity, "Obstacle.Ramp");
+            _truckPool = new ObjectPool<Obstacle>(CreateTruck, _poolRoot, obstacleCapacity, "Obstacle.Truck");
+            _trainPool = new ObjectPool<Obstacle>(CreateTrain, _poolRoot, obstacleCapacity, "Obstacle.Train");
+            _movingTruckPool = new ObjectPool<Obstacle>(CreateMovingTruck, _poolRoot, obstacleCapacity, "Obstacle.MovingTruck");
+            _oncomingTruckPool = new ObjectPool<Obstacle>(CreateOncomingTruck, _poolRoot, obstacleCapacity, "Obstacle.Oncoming");
+            _pitPool = new ObjectPool<Obstacle>(CreatePit, _poolRoot, obstacleCapacity, "Obstacle.Pit");
+            _underpassPool = new ObjectPool<Obstacle>(CreateUnderpass, _poolRoot, obstacleCapacity, "Obstacle.Underpass");
+            _busPool = new ObjectPool<Obstacle>(CreateStoppingBus, _poolRoot, obstacleCapacity, "Obstacle.Bus");
             _coinPool = new ObjectPool<Coin>(CreateCoin, _poolRoot, coinCapacity, "Coin");
         }
 
@@ -661,7 +776,7 @@ namespace Runner.Spawning
                 new Vector3(floorWidth, _floorThickness, _segmentLength),
                 _groundMaterial,
                 root.layer,
-                triggerCollider: false,
+                PrimitiveFactory.ColliderMode.None,
                 castShadows: false);
 
             // No collider on the floor at all — the player's vertical motion is kinematic and
@@ -691,13 +806,152 @@ namespace Runner.Spawning
                     size,
                     _obstacleMaterial,
                     _obstacleLayer,
-                    triggerCollider: true,
+                    PrimitiveFactory.ColliderMode.Trigger,
                     castShadows: true);
 
                 obstacle = go.AddComponent<Obstacle>();
             }
 
             obstacle.Initialize(kind);
+            return obstacle;
+        }
+
+        private Obstacle CreateTruck() => CreateLandable(ObstacleKind.Truck, _truckSize);
+
+        /// <summary>
+        /// Visual and kill volume are the same box, so what you see is exactly what hits you.
+        /// It reuses the plain obstacle path — the only thing that makes it an underpass is
+        /// that it starts above the ground instead of on it.
+        /// </summary>
+        private Obstacle CreateUnderpass() => CreateObstacle(
+            ObstacleKind.Underpass,
+            new Vector3(_underpassWidth, _underpassHeight, _underpassDepth),
+            null);
+
+        private Obstacle CreateStoppingBus()
+        {
+            Obstacle obstacle = CreateLandable(ObstacleKind.StoppingBus, _busSize);
+            obstacle.gameObject.AddComponent<MovingObstacle>().Initialize();
+            obstacle.Initialize(ObstacleKind.StoppingBus);
+            return obstacle;
+        }
+
+        private Obstacle CreateOncomingTruck()
+        {
+            Obstacle obstacle = CreateLandable(ObstacleKind.OncomingTruck, _truckSize);
+            obstacle.gameObject.AddComponent<MovingObstacle>().Initialize();
+            obstacle.Initialize(ObstacleKind.OncomingTruck);
+            return obstacle;
+        }
+
+        /// <summary>
+        /// A hole. Rendered as a near-black slab just proud of the road rather than an actual
+        /// gap — punching a real hole would mean tiling every segment floor per lane and per
+        /// row, and this plays identically: jump it, or be somewhere else.
+        /// </summary>
+        private Obstacle CreatePit()
+        {
+            GameObject root = new GameObject("Obstacle_Pit");
+
+            GameObject slab = PrimitiveFactory.CreateCube(
+                "Pit_Slab",
+                _pitSize,
+                _pitMaterial,
+                root.layer,
+                PrimitiveFactory.ColliderMode.None,
+                castShadows: false);
+
+            slab.transform.SetParent(root.transform, false);
+            slab.transform.localPosition = new Vector3(0f, _pitSize.y * 0.5f, 0f);
+
+            GameObject lethal = new GameObject("Lethal") { layer = _obstacleLayer };
+            lethal.transform.SetParent(root.transform, false);
+
+            BoxCollider box = lethal.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            box.center = new Vector3(0f, _pitTriggerHeight * 0.5f - 0.15f, 0f);
+            box.size = new Vector3(_pitSize.x, _pitTriggerHeight, _pitSize.z);
+
+            Obstacle obstacle = root.AddComponent<Obstacle>();
+            obstacle.Initialize(ObstacleKind.Pit);
+            return obstacle;
+        }
+
+        private Obstacle CreateMovingTruck()
+        {
+            Obstacle obstacle = CreateLandable(ObstacleKind.MovingTruck, _truckSize);
+            obstacle.gameObject.AddComponent<MovingObstacle>().Initialize();
+
+            // CreateLandable already ran Initialize, before the drift component existed.
+            obstacle.Initialize(ObstacleKind.MovingTruck);
+            return obstacle;
+        }
+
+        private Obstacle CreateTrain() => CreateLandable(ObstacleKind.Train, _trainSize);
+
+        /// <summary>
+        /// A piece of the stack: solid body on the Surface layer for the ground probe to find,
+        /// plus a lethal trigger inset from the top. That inset is the entire mechanic — land
+        /// on the roof and you are above the lethal volume; clip the side and you are inside it.
+        /// </summary>
+        private Obstacle CreateLandable(ObstacleKind kind, Vector3 size)
+        {
+            GameObject root = new GameObject($"Obstacle_{kind}");
+
+            GameObject body = PrimitiveFactory.CreateCube(
+                $"{kind}_Body",
+                size,
+                _obstacleMaterial,
+                _surfaceLayer,
+                PrimitiveFactory.ColliderMode.Solid,
+                castShadows: true);
+
+            body.transform.SetParent(root.transform, false);
+            body.transform.localPosition = new Vector3(0f, size.y * 0.5f, 0f);
+
+            GameObject lethal = new GameObject("Lethal") { layer = _obstacleLayer };
+            lethal.transform.SetParent(root.transform, false);
+
+            float lethalHeight = Mathf.Max(0.05f, size.y - _roofSafeInset);
+            BoxCollider box = lethal.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            box.center = new Vector3(0f, lethalHeight * 0.5f, 0f);
+            box.size = new Vector3(size.x, lethalHeight, size.z);
+
+            Obstacle obstacle = root.AddComponent<Obstacle>();
+            obstacle.Initialize(kind);
+            return obstacle;
+        }
+
+        /// <summary>
+        /// Never lethal — it exists purely to raise the ground. The player walks up it because
+        /// the per-frame rise stays under LaneController's step tolerance, and leaves the top
+        /// carrying the climb rate as upward velocity.
+        /// </summary>
+        private Obstacle CreateRamp()
+        {
+            GameObject root = new GameObject("Obstacle_Ramp");
+
+            float angle = Mathf.Atan2(_rampRise, _rampRun) * Mathf.Rad2Deg;
+            float slopeLength = Mathf.Sqrt(_rampRise * _rampRise + _rampRun * _rampRun);
+
+            GameObject slope = PrimitiveFactory.CreateCube(
+                "Ramp_Slope",
+                new Vector3(_rampWidth, _rampThickness, slopeLength),
+                _obstacleMaterial,
+                _surfaceLayer,
+                PrimitiveFactory.ColliderMode.Solid,
+                castShadows: true);
+
+            slope.transform.SetParent(root.transform, false);
+
+            // Negative pitch lifts the far (+Z) end, which is the end the player reaches last
+            // as the world scrolls toward them.
+            slope.transform.localRotation = Quaternion.Euler(-angle, 0f, 0f);
+            slope.transform.localPosition = new Vector3(0f, _rampRise * 0.5f, _rampRun * 0.5f);
+
+            Obstacle obstacle = root.AddComponent<Obstacle>();
+            obstacle.Initialize(ObstacleKind.Ramp);
             return obstacle;
         }
 
@@ -716,7 +970,7 @@ namespace Runner.Spawning
                     _coinSize,
                     _coinMaterial,
                     _coinLayer,
-                    triggerCollider: true,
+                    PrimitiveFactory.ColliderMode.Trigger,
                     castShadows: false);
 
                 coin = go.AddComponent<Coin>();

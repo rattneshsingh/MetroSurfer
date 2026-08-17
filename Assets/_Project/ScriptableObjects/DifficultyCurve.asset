@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 828f177b24104f44da87b05949140975, type: 3}
   m_Name: DifficultyCurve
-  m_EditorClassIdentifier: Assembly-CSharp::Runner.Config.DifficultyCurve
+  m_EditorClassIdentifier: Runner::Runner.Config.DifficultyCurve
   _startSpeed: 8
   _maxSpeed: 26
   _rampDistance: 2200

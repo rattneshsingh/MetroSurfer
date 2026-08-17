@@ -35,10 +35,12 @@ namespace Runner.EditorTools
         private const string PlayerLayerName = "Player";
         private const string ObstacleLayerName = "Obstacle";
         private const string CoinLayerName = "Coin";
+        private const string SurfaceLayerName = "Surface";
 
         private const int PlayerLayerIndex = 6;
         private const int ObstacleLayerIndex = 7;
         private const int CoinLayerIndex = 8;
+        private const int SurfaceLayerIndex = 9;
 
         private static readonly Vector3 CameraPosition = new Vector3(0f, 3.4f, -6.4f);
         private static readonly Vector3 CameraEuler = new Vector3(17f, 0f, 0f);
@@ -103,6 +105,7 @@ namespace Runner.EditorTools
             AssignLayer(layers, PlayerLayerIndex, PlayerLayerName);
             AssignLayer(layers, ObstacleLayerIndex, ObstacleLayerName);
             AssignLayer(layers, CoinLayerIndex, CoinLayerName);
+            AssignLayer(layers, SurfaceLayerIndex, SurfaceLayerName);
 
             tagManager.ApplyModifiedProperties();
         }
@@ -234,6 +237,11 @@ namespace Runner.EditorTools
             TextMeshProUGUI scoreText = CreateText(canvasRect, "ScoreText", "0", 90f, TextAlignmentOptions.Top);
             AnchorTop(scoreText.rectTransform, new Vector2(600f, 140f), -90f);
 
+            TextMeshProUGUI multiplierText = CreateText(canvasRect, "MultiplierText", "x2", 64f, TextAlignmentOptions.Top);
+            multiplierText.color = new Color(1f, 0.85f, 0.3f);
+            AnchorTop(multiplierText.rectTransform, new Vector2(400f, 100f), -230f);
+            multiplierText.gameObject.SetActive(false);
+
             GameObject readyPanel = CreatePanel(canvasRect, "ReadyPanel", new Color(0f, 0f, 0f, 0.35f));
             TextMeshProUGUI readyText = CreateText(readyPanel.GetComponent<RectTransform>(), "ReadyText",
                 "TAP OR PRESS A KEY", 70f, TextAlignmentOptions.Center);
@@ -255,6 +263,7 @@ namespace Runner.EditorTools
 
             SerializedObject hudSerialized = new SerializedObject(hud);
             SetReference(hudSerialized, "_scoreText", scoreText);
+            SetReference(hudSerialized, "_multiplierText", multiplierText);
             SetReference(hudSerialized, "_readyPanel", readyPanel);
             SetReference(hudSerialized, "_gameOverPanel", gameOverPanel);
             SetReference(hudSerialized, "_finalScoreText", finalScoreText);
@@ -369,6 +378,18 @@ namespace Runner.EditorTools
             SetReference(serialized, "_hitbox", hitbox);
             SetReference(serialized, "_visual", visual);
             SetReference(serialized, "_input", input);
+
+            // The ground probe needs to know which layer counts as standable.
+            int surfaceLayer = LayerMask.NameToLayer(SurfaceLayerName);
+            if (surfaceLayer >= 0)
+            {
+                SerializedProperty mask = serialized.FindProperty("_surfaceLayers");
+                if (mask != null)
+                {
+                    mask.intValue = 1 << surfaceLayer;
+                }
+            }
+
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 

@@ -14,9 +14,14 @@ namespace Runner.Spawning
         [SerializeField] private ObstacleKind _kind;
 
         private Renderer _renderer;
+        private MovingObstacle _drift;
+        private Material _defaultMaterial;
         private bool _hidden;
 
         public ObstacleKind Kind => _kind;
+
+        /// <summary>Null on anything that keeps pace with the world.</summary>
+        public MovingObstacle Drift => _drift;
 
         /// <summary>
         /// Called once at pool warm-up. Explicit rather than relying on Awake, because a
@@ -25,16 +30,45 @@ namespace Runner.Spawning
         public void Initialize(ObstacleKind kind)
         {
             _kind = kind;
-            _renderer = GetComponent<Renderer>();
+            // Landable pieces keep their mesh on a child, so search downward.
+            _renderer = GetComponentInChildren<Renderer>();
+            _drift = GetComponent<MovingObstacle>();
+
+            if (_renderer != null)
+            {
+                _defaultMaterial = _renderer.sharedMaterial;
+            }
         }
 
         public void OnSpawn()
         {
             Show();
+            RestoreMaterial();
+        }
+
+        /// <summary>Swaps to a warning colour. Used for brake lights.</summary>
+        public void SetMaterial(Material material)
+        {
+            if (_renderer != null && material != null)
+            {
+                _renderer.sharedMaterial = material;
+            }
+        }
+
+        private void RestoreMaterial()
+        {
+            if (_renderer != null && _defaultMaterial != null)
+            {
+                _renderer.sharedMaterial = _defaultMaterial;
+            }
         }
 
         public void OnDespawn()
         {
+            if (_drift != null)
+            {
+                _drift.Stop();
+            }
         }
 
         /// <summary>

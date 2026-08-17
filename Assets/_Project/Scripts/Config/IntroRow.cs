@@ -14,5 +14,10 @@ namespace Runner.Config
 
         [Tooltip("Lay a coin trail on this row, in whichever lane stays open.")]
         public bool Coins;
+
+        [Tooltip("Arc the coins across this row along the player's jump trajectory, instead of " +
+                 "laying them flat. Use on an empty row between two landable rows: Kind then " +
+                 "names the tier the jump launches from rather than anything to spawn.")]
+        public bool CoinArc;
     }
 }

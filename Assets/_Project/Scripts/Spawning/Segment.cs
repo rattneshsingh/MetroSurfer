@@ -69,9 +69,17 @@ namespace Runner.Spawning
         {
             for (int i = 0; i < _obstacleCount; i++)
             {
-                if (_obstacleLocalZ[i] < localCullZ)
+                Obstacle obstacle = _obstacles[i];
+
+                // The cached Z is the spawn position, which is stale for anything that moves.
+                // Only movers pay for the transform read, and there are few of them.
+                float z = obstacle.Drift != null
+                    ? obstacle.transform.localPosition.z
+                    : _obstacleLocalZ[i];
+
+                if (z < localCullZ)
                 {
-                    _obstacles[i].Hide();
+                    obstacle.Hide();
                 }
             }
         }

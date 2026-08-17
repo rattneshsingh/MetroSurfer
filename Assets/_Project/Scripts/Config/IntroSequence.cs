@@ -66,6 +66,22 @@ namespace Runner.Config
                 Empty(true),
                 Blocked(ObstaclePattern.AllLanesMask, ObstacleKind.High),
                 Empty(true),
+                Empty(false),
+
+                // Lesson 4 — climb. The ramp butts straight onto the truck, so the first time
+                // you go up you do not have to do anything: it happens to you. Understanding
+                // comes after.
+                Blocked(0b010, ObstacleKind.Ramp),
+                Blocked(0b010, ObstacleKind.Truck),
+                Empty(true),
+                Empty(false),
+
+                // Now the same shape, but the roof is a stepping stone rather than a
+                // destination -- a train sits beyond reach of the street.
+                Blocked(0b010, ObstacleKind.Ramp),
+                Blocked(0b010, ObstacleKind.Truck),
+                Blocked(0b010, ObstacleKind.Train),
+                Empty(true),
                 Empty(false)
             };
         }

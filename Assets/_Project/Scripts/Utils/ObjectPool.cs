@@ -58,6 +58,22 @@ namespace Runner.Utils
             _freeCount = capacity;
         }
 
+        /// <summary>
+        /// Direct access for callers that must sweep every live instance each frame. Indexed
+        /// rather than enumerated, because an enumerator would allocate.
+        /// </summary>
+        public bool TryGetActive(int index, out T instance)
+        {
+            if ((uint)index >= (uint)_instances.Length || _isFree[index])
+            {
+                instance = null;
+                return false;
+            }
+
+            instance = _instances[index];
+            return instance != null;
+        }
+
         public T Get(out int handle)
         {
             if (_freeCount == 0)

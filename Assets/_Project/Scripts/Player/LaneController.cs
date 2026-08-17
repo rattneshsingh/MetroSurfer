@@ -1,3 +1,4 @@
+using Runner.Config;
 using UnityEngine;
 
 namespace Runner.Player
@@ -67,6 +68,18 @@ namespace Runner.Player
         [SerializeField] private float _rollSpinTurns = 1f;
         [SerializeField] private float _visualSquashSpeed = 18f;
 
+        [Header("Ground — the world is no longer flat")]
+        [Tooltip("Layers the downward probe treats as standable. Resolved from 'Surface' if left empty.")]
+        [SerializeField] private LayerMask _surfaceLayers;
+
+        [Tooltip("Probe starts this far above the feet, so a rising ramp is still found.")]
+        [SerializeField] private float _probeStartHeight = 0.6f;
+        [SerializeField] private float _probeDistance = 8f;
+
+        [Tooltip("Biggest step the player walks up rather than crashes into. Ramps must be " +
+                 "gentler than this per frame; a truck side must be steeper.")]
+        [SerializeField] private float _stepUpTolerance = 0.35f;
+
         [Header("Safety")]
         [Tooltip("Clamps a frame hitch so the player cannot tunnel through an obstacle.")]
         [SerializeField] private float _maxDeltaTime = 0.05f;
@@ -95,6 +108,14 @@ namespace Runner.Player
         private float _slideBufferedAt = float.NegativeInfinity;
 
         private bool _running;
+        private float _groundHeight;
+        private float _supportY;
+
+        /// <summary>Height of the surface currently underfoot. Drives the tier multiplier.</summary>
+        public float SupportHeight => _supportY;
+
+        /// <summary>The jump arc as data, so coin trajectories can be derived from it.</summary>
+        public JumpProfile Jump => new JumpProfile(_jumpHeight, _jumpRiseDuration, _fallGravityMultiplier);
 
         public int CurrentLane => _targetLane;
         public bool IsSliding => _isSliding;
@@ -107,6 +128,15 @@ namespace Runner.Player
             if (_hitbox == null)
             {
                 _hitbox = GetComponent<BoxCollider>();
+            }
+
+            if (_surfaceLayers.value == 0)
+            {
+                int surface = LayerMask.NameToLayer("Surface");
+                if (surface >= 0)
+                {
+                    _surfaceLayers = 1 << surface;
+                }
             }
 
             RecalculateJumpConstants();
@@ -169,6 +199,8 @@ namespace Runner.Player
             _laneTimer = _laneSnapDuration;
 
             _y = 0f;
+            _supportY = 0f;
+            _groundHeight = 0f;
             _verticalVelocity = 0f;
             _isGrounded = true;
             _timeSinceGrounded = 0f;
@@ -279,24 +311,55 @@ namespace Runner.Player
             _verticalVelocity -= gravity * dt;
             _y += _verticalVelocity * dt;
 
-            if (_y <= 0f)
-            {
-                _y = 0f;
-                _verticalVelocity = 0f;
+            _groundHeight = ProbeGroundHeight();
+            float rise = _groundHeight - _y;
 
-                if (!_isGrounded)
+            if (_verticalVelocity <= 0f && rise >= 0f)
+            {
+                // Landing out of the air is always allowed — that is how you get onto a roof.
+                // Once grounded, only a gentle rise is walkable; anything steeper is a wall,
+                // and running into a wall is the lethal collider's business, not ours.
+                if (!_isGrounded || rise <= _stepUpTolerance)
                 {
-                    _isGrounded = true;
+                    _y = _groundHeight;
+                    _supportY = _groundHeight;
+                }
+                else
+                {
+                    _y = _supportY;
                 }
 
+                _verticalVelocity = 0f;
+                _isGrounded = true;
                 _timeSinceGrounded = 0f;
                 _jumpConsumed = false;
+                return;
             }
-            else
+
+            // Ground fell away from under us — running off a roof, or off the end of a ramp.
+            // No launch impulse: a ramp is a smooth ride up, and leaving the top is the player's
+            // decision to make with the jump button. Coyote time covers the lip.
+            _isGrounded = false;
+            _timeSinceGrounded += dt;
+        }
+
+        /// <summary>
+        /// One downward ray per frame. Physics.Raycast with an out RaycastHit does not
+        /// allocate (RaycastAll does). Returns 0 when nothing is hit, so the street itself
+        /// needs no collider at all.
+        /// </summary>
+        private float ProbeGroundHeight()
+        {
+            Vector3 origin = new Vector3(_x, _y + _probeStartHeight, _transform.position.z);
+
+            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit,
+                                _probeStartHeight + _probeDistance, _surfaceLayers,
+                                QueryTriggerInteraction.Ignore))
             {
-                _isGrounded = false;
-                _timeSinceGrounded += dt;
+                return hit.point.y;
             }
+
+            return 0f;
         }
 
         private void TickSlide(float dt)
