@@ -24,6 +24,7 @@ namespace Runner.Spawning
 
         private readonly IntroSequence _intro;
         private readonly ObstacleTable _table;
+        private readonly ObstacleCatalog _catalog;
         private readonly int _minRowGapAfterHardRow;
         private readonly int _seed;
 
@@ -37,11 +38,17 @@ namespace Runner.Spawning
         public int RowsGenerated => _rowsGenerated;
         public bool InFormation => _activeFormation != null;
 
-        public TrackGenerator(int seed, IntroSequence intro, ObstacleTable table, int minRowGapAfterHardRow)
+        public TrackGenerator(
+            int seed,
+            IntroSequence intro,
+            ObstacleTable table,
+            ObstacleCatalog catalog,
+            int minRowGapAfterHardRow)
         {
             _seed = seed;
             _intro = intro;
             _table = table;
+            _catalog = catalog;
             _minRowGapAfterHardRow = Mathf.Max(0, minRowGapAfterHardRow);
 
             Reset();
@@ -144,7 +151,7 @@ namespace Runner.Spawning
             }
 
             // Only a row that forces a lane change earns a breather after it.
-            if (ObstacleKindRules.ClosesLane(pattern.Kind))
+            if (ClosesLane(pattern.Kind))
             {
                 _rowsSinceHardRow = 0;
             }
@@ -166,7 +173,7 @@ namespace Runner.Spawning
         {
             mask &= AllLanesMask;
 
-            if (mask == AllLanesMask && ObstacleKindRules.ClosesLane(kind))
+            if (mask == AllLanesMask && ClosesLane(kind))
             {
                 mask &= ~(1 << _rng.Next(0, LaneCount));
             }
@@ -190,7 +197,7 @@ namespace Runner.Spawning
 
             // On a landable row the coins belong on the roofs. Points have to be where the risk
             // is, or staying on the street is always the better play.
-            if (mask != 0 && ObstacleKindRules.IsLandable(kind))
+            if (mask != 0 && IsLandable(kind))
             {
                 int roofLane = PickLane(mask, occupied: true);
                 if (roofLane >= 0)
@@ -239,6 +246,12 @@ namespace Runner.Spawning
         }
 
         private static bool IsLaneOccupied(int mask, int lane) => (mask & (1 << lane)) != 0;
+
+        // Read from the catalogue rather than hardcoded, so a new obstacle declares its own
+        // fairness contract alongside its geometry instead of in a switch somewhere else.
+        private bool ClosesLane(ObstacleKind kind) => _catalog != null && _catalog.ClosesLane(kind);
+
+        private bool IsLandable(ObstacleKind kind) => _catalog != null && _catalog.IsLandable(kind);
 
         private void BumpRowGap()
         {

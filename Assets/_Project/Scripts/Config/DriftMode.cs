@@ -1,8 +1,11 @@
-namespace Runner.Spawning
+namespace Runner.Config
 {
     /// <summary>How a vehicle fails to keep pace with the world.</summary>
     public enum DriftMode
     {
+        /// <summary>Keeps pace with the world. Most obstacles.</summary>
+        None = -1,
+
         /// <summary>Surges ahead and drops back around its spawn point. Stays in bounds forever.</summary>
         Oscillate = 0,
 

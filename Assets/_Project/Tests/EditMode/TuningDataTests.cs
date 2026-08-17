@@ -8,12 +8,14 @@ namespace Runner.Tests
     {
         private ObstacleTable _table;
         private DifficultyCurve _curve;
+        private ObstacleCatalog _catalog;
 
         [SetUp]
         public void SetUp()
         {
             _table = ObstacleTable.CreateDefault();
             _curve = DifficultyCurve.CreateDefault();
+            _catalog = ObstacleCatalog.CreateDefault();
         }
 
         [TearDown]
@@ -21,6 +23,7 @@ namespace Runner.Tests
         {
             Object.DestroyImmediate(_table);
             Object.DestroyImmediate(_curve);
+            Object.DestroyImmediate(_catalog);
         }
 
         [Test]
@@ -81,7 +84,7 @@ namespace Runner.Tests
                 {
                     IntroRow entry = formation.Rows[row];
 
-                    if (!ObstacleKindRules.ClosesLane(entry.Kind))
+                    if (!_catalog.ClosesLane(entry.Kind))
                     {
                         continue;
                     }

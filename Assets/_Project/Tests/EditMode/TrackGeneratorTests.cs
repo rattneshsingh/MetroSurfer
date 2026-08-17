@@ -18,12 +18,14 @@ namespace Runner.Tests
 
         private IntroSequence _intro;
         private ObstacleTable _table;
+        private ObstacleCatalog _catalog;
 
         [SetUp]
         public void SetUp()
         {
             _intro = IntroSequence.CreateDefault();
             _table = ObstacleTable.CreateDefault();
+            _catalog = ObstacleCatalog.CreateDefault();
         }
 
         [TearDown]
@@ -31,10 +33,11 @@ namespace Runner.Tests
         {
             Object.DestroyImmediate(_intro);
             Object.DestroyImmediate(_table);
+            Object.DestroyImmediate(_catalog);
         }
 
         private TrackGenerator NewGenerator(int seed = 1234) =>
-            new TrackGenerator(seed, _intro, _table, minRowGapAfterHardRow: 1);
+            new TrackGenerator(seed, _intro, _table, _catalog, minRowGapAfterHardRow: 1);
 
         /// <summary>
         /// The fairness invariant. A row that closes every lane cannot be survived by any
@@ -49,7 +52,7 @@ namespace Runner.Tests
             {
                 RowPlan plan = generator.NextRow(row * RowSpacing, density: 1f, coinChance: 0.5f);
 
-                if (!ObstacleKindRules.ClosesLane(plan.Kind))
+                if (!_catalog.ClosesLane(plan.Kind))
                 {
                     continue;
                 }
@@ -157,7 +160,7 @@ namespace Runner.Tests
                 {
                     rampsChecked++;
                     Assert.IsTrue(
-                        ObstacleKindRules.IsLandable(plan.Kind) && plan.HasObstacles,
+                        _catalog.IsLandable(plan.Kind) && plan.HasObstacles,
                         $"Row {row}: a ramp led to {plan.Kind} instead of something landable.");
                 }
 
@@ -189,7 +192,7 @@ namespace Runner.Tests
                 {
                     roofTrails++;
                     Assert.IsTrue(laneOccupied, $"Row {row}: roof coins in a lane with nothing to stand on.");
-                    Assert.IsTrue(ObstacleKindRules.IsLandable(plan.Kind), $"Row {row}: roof coins over {plan.Kind}.");
+                    Assert.IsTrue(_catalog.IsLandable(plan.Kind), $"Row {row}: roof coins over {plan.Kind}.");
                 }
                 else
                 {
@@ -224,7 +227,7 @@ namespace Runner.Tests
                     foreach (RowPlan previous in recent)
                     {
                         Assert.IsFalse(
-                            previous.HasObstacles && ObstacleKindRules.IsLandable(previous.Kind),
+                            previous.HasObstacles && _catalog.IsLandable(previous.Kind),
                             $"Row {row}: underpass sits {recent.Count} rows after a {previous.Kind}, " +
                             "leaving no room to drop off it.");
                     }
@@ -262,14 +265,14 @@ namespace Runner.Tests
                     arcsChecked++;
                     Assert.IsFalse(plan.HasObstacles, $"Row {row}: an arc was drawn over solid ground.");
                     Assert.IsTrue(
-                        previous.HasObstacles && ObstacleKindRules.IsLandable(previous.Kind),
+                        previous.HasObstacles && _catalog.IsLandable(previous.Kind),
                         $"Row {row}: an arc launches from {previous.Kind}, which is not landable.");
                 }
 
                 if (previousArc)
                 {
                     Assert.IsTrue(
-                        plan.HasObstacles && ObstacleKindRules.IsLandable(plan.Kind),
+                        plan.HasObstacles && _catalog.IsLandable(plan.Kind),
                         $"Row {row}: an arc landed on {plan.Kind}, which is not landable.");
                 }
 

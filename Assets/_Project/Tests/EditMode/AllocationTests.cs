@@ -36,6 +36,7 @@ namespace Runner.Tests
 
         private IntroSequence _intro;
         private ObstacleTable _table;
+        private ObstacleCatalog _catalog;
         private Transform _poolRoot;
 
         [SetUp]
@@ -43,6 +44,7 @@ namespace Runner.Tests
         {
             _intro = IntroSequence.CreateDefault();
             _table = ObstacleTable.CreateDefault();
+            _catalog = ObstacleCatalog.CreateDefault();
             _poolRoot = new GameObject("AllocPoolRoot").transform;
         }
 
@@ -51,6 +53,7 @@ namespace Runner.Tests
         {
             Object.DestroyImmediate(_intro);
             Object.DestroyImmediate(_table);
+            Object.DestroyImmediate(_catalog);
             Object.DestroyImmediate(_poolRoot.gameObject);
         }
 
@@ -62,7 +65,7 @@ namespace Runner.Tests
         [Test]
         public void GeneratingRowsDoesNotAllocate()
         {
-            TrackGenerator generator = new TrackGenerator(1234, _intro, _table, 1);
+            TrackGenerator generator = new TrackGenerator(1234, _intro, _table, _catalog, 1);
 
             // Push past the scripted intro and warm every branch: single rows, formations,
             // coin trails and arcs.
@@ -215,23 +218,24 @@ namespace Runner.Tests
         }
 
         /// <summary>
-        /// Enum values are used as switch keys and dictionary-free lookups all over the spawner.
-        /// Boxing one is an easy mistake and an invisible one.
+        /// Kind lookups moved into the catalogue, which indexes an array by enum value. A
+        /// Dictionary keyed on an enum would box every call, and it would be invisible.
         /// </summary>
         [Test]
-        public void ObstacleKindRuleChecksDoNotAllocate()
+        public void CatalogLookupsDoNotAllocate()
         {
-            ObstacleKindRules.IsLandable(ObstacleKind.Truck);
-            ObstacleKindRules.ClosesLane(ObstacleKind.Full);
+            _catalog.IsLandable(ObstacleKind.Truck);
+            _catalog.ClosesLane(ObstacleKind.Full);
+            _catalog.RoofHeight(ObstacleKind.Train);
 
             Assert.That(() =>
             {
                 for (int i = 0; i < 500; i++)
                 {
                     ObstacleKind kind = (ObstacleKind)(i % 11);
-                    ObstacleKindRules.IsLandable(kind);
-                    ObstacleKindRules.ClosesLane(kind);
-                    ObstacleKindRules.IsOverhead(kind);
+                    _catalog.IsLandable(kind);
+                    _catalog.ClosesLane(kind);
+                    _catalog.RoofHeight(kind);
                 }
             }, Is.Not.AllocatingGCMemory());
         }

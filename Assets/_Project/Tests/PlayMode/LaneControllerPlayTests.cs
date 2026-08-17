@@ -81,18 +81,28 @@ namespace Runner.PlayTests
         [UnityTest]
         public IEnumerator RidingASlopeNeverLaunchesThePlayer()
         {
-            _surface = BuildSlope(startZ: 12f, run: 14f, rise: 1.2f);
+            const float StartZ = 12f;
+            const float Run = 14f;
+
+            _surface = BuildSlope(StartZ, Run, rise: 1.2f);
 
             _lane.Configure(LaneWidth);
             _lane.SetRunning(true);
 
             yield return null;
 
+            // The slope is overhead from StartZ/speed until (StartZ + Run)/speed, after which it
+            // has passed entirely and there is genuinely no ground left. Going airborne then is
+            // correct behaviour, and PlayerFallsWhenTheSurfaceIsTakenAway is what covers it.
+            // Derived from the geometry rather than hardcoded, so the window cannot drift out of
+            // agreement with the slope it is testing.
+            float traverseTime = (StartZ + Run) / ScrollSpeed - 0.2f;
+
             float highestSupport = 0f;
             float elapsed = 0f;
 
             // Scroll the slope past the stationary player, exactly as the world does.
-            while (elapsed < 3.5f)
+            while (elapsed < traverseTime)
             {
                 _surface.transform.position += Vector3.back * ScrollSpeed * Time.deltaTime;
                 elapsed += Time.deltaTime;
@@ -102,7 +112,8 @@ namespace Runner.PlayTests
                 highestSupport = Mathf.Max(highestSupport, _lane.SupportHeight);
 
                 Assert.IsTrue(_lane.IsGrounded,
-                    $"Player left the ground at {elapsed:0.00}s while riding a slope — it is launching them.");
+                    $"Player left the ground at {elapsed:0.00}s of a {traverseTime:0.00}s traverse — " +
+                    "the slope is launching them.");
             }
 
             Assert.Greater(highestSupport, 0.5f,

@@ -31,6 +31,7 @@ namespace Runner.EditorTools
         private const string DifficultyAssetPath = ScriptableObjectFolder + "/DifficultyCurve.asset";
         private const string ObstacleTableAssetPath = ScriptableObjectFolder + "/ObstacleTable.asset";
         private const string IntroSequenceAssetPath = ScriptableObjectFolder + "/IntroSequence.asset";
+        private const string CatalogAssetPath = ScriptableObjectFolder + "/ObstacleCatalog.asset";
 
         private const string PlayerLayerName = "Player";
         private const string ObstacleLayerName = "Obstacle";
@@ -69,8 +70,9 @@ namespace Runner.EditorTools
             DifficultyCurve difficulty = LoadOrCreateAsset(DifficultyAssetPath, DifficultyCurve.CreateDefault);
             ObstacleTable obstacleTable = LoadOrCreateAsset(ObstacleTableAssetPath, ObstacleTable.CreateDefault);
             IntroSequence introSequence = LoadOrCreateAsset(IntroSequenceAssetPath, IntroSequence.CreateDefault);
+            ObstacleCatalog catalog = LoadOrCreateAsset(CatalogAssetPath, ObstacleCatalog.CreateDefault);
 
-            WireSpawner(spawner, introSequence);
+            WireSpawner(spawner, introSequence, catalog);
             WirePlayer(player, hitbox, visual, input);
             WireGameManager(gameManager, player, spawner, input, hud, difficulty, obstacleTable);
 
@@ -365,10 +367,11 @@ namespace Runner.EditorTools
             rect.anchoredPosition = new Vector2(0f, y);
         }
 
-        private static void WireSpawner(SegmentSpawner spawner, IntroSequence introSequence)
+        private static void WireSpawner(SegmentSpawner spawner, IntroSequence introSequence, ObstacleCatalog catalog)
         {
             SerializedObject serialized = new SerializedObject(spawner);
             SetReference(serialized, "_introSequence", introSequence);
+            SetReference(serialized, "_catalog", catalog);
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
