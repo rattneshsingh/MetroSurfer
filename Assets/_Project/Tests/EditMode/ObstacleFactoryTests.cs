@@ -84,13 +84,36 @@ namespace Runner.Tests
             }
         }
 
-        /// <summary>A ramp that can kill you is a wall with extra steps.</summary>
+        /// <summary>
+        /// A ramp is solid underneath but safe on top. Get this wrong in either direction and it
+        /// either kills people for riding it, or lets them run through it at street level.
+        /// </summary>
         [Test]
-        public void RampsHaveNoLethalVolume()
+        public void RampIsSolidUnderneathButSafeToRide()
         {
             Obstacle ramp = _factory.Get(ObstacleKind.Ramp, out int handle);
+            ObstacleDefinition definition = _catalog.Get(ObstacleKind.Ramp);
 
-            Assert.IsNull(ramp.transform.Find("Lethal"), "A ramp must never be lethal.");
+            Transform lethal = ramp.transform.Find("Lethal");
+            Assert.IsNotNull(lethal, "A ramp with no solid part can be run through from the side.");
+
+            BoxCollider box = lethal.GetComponent<BoxCollider>();
+            float solidTop = box.center.y + box.size.y * 0.5f;
+            float solidStartZ = box.center.z - box.size.z * 0.5f;
+
+            // Height of the slope where the solid part begins.
+            float slopeHeightThere = definition.RampRise * (solidStartZ / definition.RampRun);
+            const float HitboxBottom = 0.075f;
+
+            Assert.LessOrEqual(solidTop, slopeHeightThere + HitboxBottom,
+                $"The solid part reaches {solidTop:0.00} where the slope is only " +
+                $"{slopeHeightThere:0.00} — it would catch someone riding the ramp properly.");
+
+            Assert.Greater(solidTop, 0.4f,
+                "The solid part is too shallow to catch a runner arriving at street level.");
+
+            Assert.Greater(solidStartZ, 0f,
+                "The entrance to the ramp must stay open, or you cannot get on it.");
 
             _factory.Release(ObstacleKind.Ramp, handle);
         }

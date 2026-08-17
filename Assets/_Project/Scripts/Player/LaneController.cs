@@ -68,6 +68,16 @@ namespace Runner.Player
         [SerializeField] private float _rollSpinTurns = 1f;
         [SerializeField] private float _visualSquashSpeed = 18f;
 
+        [Header("Stumble reaction")]
+        [Tooltip("How long the player visibly loses composure after clipping something.")]
+        [SerializeField] private float _flinchDuration = 0.45f;
+
+        [Tooltip("Peak sideways tilt of the flinch, in degrees.")]
+        [SerializeField] private float _flinchTiltDegrees = 26f;
+
+        [Tooltip("How far the visual compresses at the moment of impact.")]
+        [SerializeField, Range(0.5f, 1f)] private float _flinchSquash = 0.82f;
+
         [Header("Ground — the world is no longer flat")]
         [Tooltip("Layers the downward probe treats as standable. Resolved from 'Surface' if left empty.")]
         [SerializeField] private LayerMask _surfaceLayers;
@@ -103,6 +113,7 @@ namespace Runner.Player
 
         private bool _isSliding;
         private float _slideTimer;
+        private float _flinchTimer;
 
         private float _jumpBufferedAt = float.NegativeInfinity;
         private float _slideBufferedAt = float.NegativeInfinity;
@@ -118,6 +129,22 @@ namespace Runner.Player
         public JumpProfile Jump => new JumpProfile(_jumpHeight, _jumpRiseDuration, _fallGravityMultiplier);
 
         public int CurrentLane => _targetLane;
+
+        /// <summary>
+        /// Kicks off the visible reaction to a stumble. Purely cosmetic — control is never taken
+        /// away, because losing input on a hit you are already recovering from is how a
+        /// forgiving mechanic starts feeling punishing.
+        /// </summary>
+        public void PlayStumble()
+        {
+            _flinchTimer = _flinchDuration;
+        }
+
+        /// <summary>True while the horizontal snap is still running.</summary>
+        public bool IsChangingLanes => _laneTimer < _laneSnapDuration;
+
+        /// <summary>Current horizontal position. The pursuer lines up with it.</summary>
+        public float LaneX => _x;
         public bool IsSliding => _isSliding;
         public bool IsGrounded => _isGrounded;
 
@@ -208,6 +235,7 @@ namespace Runner.Player
 
             _jumpBufferedAt = float.NegativeInfinity;
             _slideBufferedAt = float.NegativeInfinity;
+            _flinchTimer = 0f;
 
             EndSlide();
 
@@ -425,19 +453,32 @@ namespace Runner.Player
             }
 
             Vector3 target = _isSliding ? _slidingVisualScale : _standingVisualScale;
-            _visual.localScale = Vector3.Lerp(_visual.localScale, target, 1f - Mathf.Exp(-_visualSquashSpeed * dt));
 
             // A squashed cube reads as ducking. Only actual rotation reads as a roll, and the
             // player needs to see which one they did to learn the timing.
+            Quaternion rotation = Quaternion.identity;
+
             if (_isSliding && _slideDuration > 0f && _rollSpinTurns != 0f)
             {
                 float progress = 1f - Mathf.Clamp01(_slideTimer / _slideDuration);
-                _visual.localRotation = Quaternion.Euler(progress * 360f * _rollSpinTurns, 0f, 0f);
+                rotation = Quaternion.Euler(progress * 360f * _rollSpinTurns, 0f, 0f);
             }
-            else
+
+            if (_flinchTimer > 0f && _flinchDuration > 0f)
             {
-                _visual.localRotation = Quaternion.identity;
+                _flinchTimer -= dt;
+
+                // A decaying wobble rather than a single tilt — one lean reads as a pose, a
+                // wobble reads as being knocked off balance.
+                float life = Mathf.Clamp01(_flinchTimer / _flinchDuration);
+                float wobble = Mathf.Sin(life * Mathf.PI * 3f) * life;
+
+                rotation *= Quaternion.Euler(0f, 0f, wobble * _flinchTiltDegrees);
+                target *= Mathf.Lerp(1f, _flinchSquash, life);
             }
+
+            _visual.localScale = Vector3.Lerp(_visual.localScale, target, 1f - Mathf.Exp(-_visualSquashSpeed * dt));
+            _visual.localRotation = rotation;
         }
 
         private void ApplyTransform()

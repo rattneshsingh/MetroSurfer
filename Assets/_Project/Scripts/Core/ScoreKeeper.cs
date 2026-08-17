@@ -85,6 +85,17 @@ namespace Runner.Core
             return true;
         }
 
+        /// <summary>
+        /// Drops the chain without touching banked points. Called when the player stumbles: a
+        /// scrappy run should be worth less than a clean one, which is how failure stays felt
+        /// even when it does not end the run.
+        /// </summary>
+        public void BreakStreak()
+        {
+            _streakCoins = 0;
+            _multiplier = 1;
+        }
+
         /// <summary>Awards a coin and returns the points it was worth.</summary>
         public int Collect(int coinValue, float supportHeight, float distance)
         {

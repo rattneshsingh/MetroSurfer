@@ -234,7 +234,15 @@ namespace Runner.Spawning
             return root.AddComponent<Obstacle>();
         }
 
-        /// <summary>Never lethal. It exists purely to raise the ground.</summary>
+        /// <summary>
+        /// Raises the ground, and is solid underneath.
+        /// </summary>
+        /// <remarks>
+        /// The slope itself is never lethal — riding it is the point. But the wedge *below* the
+        /// slope is a solid object, and sliding into it from an adjacent lane halfway along used
+        /// to do nothing at all: the controller refused to step up, so the player kept running
+        /// at street level inside the geometry. That is now a stumble.
+        /// </remarks>
         private Obstacle BuildRamp(ObstacleDefinition definition)
         {
             GameObject root = new GameObject("Obstacle_" + definition.Kind);
@@ -257,7 +265,40 @@ namespace Runner.Spawning
             slope.transform.localPosition = new Vector3(
                 0f, definition.RampRise * 0.5f, definition.RampRun * 0.5f);
 
+            AddRampUnderside(root, definition);
             return root.AddComponent<Obstacle>();
+        }
+
+        /// <summary>
+        /// The solid part of the wedge, kept clear of the surface people ride on.
+        /// </summary>
+        /// <remarks>
+        /// A box cannot follow a slope, so it covers the far portion of the run only, and its
+        /// top sits at the slope's height where that portion begins. Anyone correctly riding the
+        /// ramp is above it by then; anyone arriving from the side at street level is inside it.
+        /// The near portion is left open because that is the entrance.
+        /// </remarks>
+        private void AddRampUnderside(GameObject root, ObstacleDefinition definition)
+        {
+            const float SolidFromFraction = 0.45f;
+
+            float startZ = definition.RampRun * SolidFromFraction;
+            float depth = definition.RampRun - startZ;
+            float height = definition.RampRise * SolidFromFraction;
+
+            if (depth <= 0.01f || height <= 0.01f)
+            {
+                return;
+            }
+
+            GameObject lethal = new GameObject("Lethal");
+            lethal.layer = _settings.ObstacleLayer;
+            lethal.transform.SetParent(root.transform, false);
+
+            BoxCollider box = lethal.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            box.center = new Vector3(0f, height * 0.5f, startZ + depth * 0.5f);
+            box.size = new Vector3(definition.Size.x, height, depth);
         }
 
         /// <summary>

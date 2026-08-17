@@ -61,9 +61,10 @@ namespace Runner.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
-            ConfigureCamera();
+            CameraShake cameraShake = ConfigureCamera();
 
             LaneController player = BuildPlayer(out PlayerCollision playerCollision, out BoxCollider hitbox, out Transform visual);
+            Pursuer pursuer = BuildPursuer();
             BuildBootstrap(out PlayerInputReader input, out SegmentSpawner spawner, out GameManager gameManager);
             HudController hud = BuildHud();
 
@@ -74,7 +75,7 @@ namespace Runner.EditorTools
 
             WireSpawner(spawner, introSequence, catalog);
             WirePlayer(player, hitbox, visual, input);
-            WireGameManager(gameManager, player, spawner, input, hud, difficulty, obstacleTable);
+            WireGameManager(gameManager, player, spawner, input, hud, difficulty, obstacleTable, pursuer, cameraShake);
 
             SaveScene(scene);
 
@@ -141,12 +142,12 @@ namespace Runner.EditorTools
             slot.stringValue = layerName;
         }
 
-        private static void ConfigureCamera()
+        private static CameraShake ConfigureCamera()
         {
             Camera camera = Object.FindAnyObjectByType<Camera>();
             if (camera == null)
             {
-                return;
+                return null;
             }
 
             Transform t = camera.transform;
@@ -164,6 +165,9 @@ namespace Runner.EditorTools
             RenderSettings.fogColor = SkyColor;
             RenderSettings.fogStartDistance = 70f;
             RenderSettings.fogEndDistance = 190f;
+
+            // Added after positioning, so the shake captures the right base position.
+            return camera.gameObject.AddComponent<CameraShake>();
         }
 
         private static LaneController BuildPlayer(
@@ -205,6 +209,35 @@ namespace Runner.EditorTools
 
             visual = visualObject.transform;
             return laneController;
+        }
+
+        /// <summary>
+        /// A red cube that lives behind the player. Crude, but it only has to answer one
+        /// question at a glance: how much trouble am I in?
+        /// </summary>
+        private static Pursuer BuildPursuer()
+        {
+            GameObject root = new GameObject("Pursuer");
+            root.transform.position = new Vector3(0f, 0f, -9f);
+
+            GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            visual.name = "Visual";
+            Object.DestroyImmediate(visual.GetComponent<BoxCollider>());
+
+            visual.transform.SetParent(root.transform, false);
+            visual.transform.localPosition = new Vector3(0f, 0.55f, 0f);
+            visual.transform.localScale = new Vector3(0.75f, 1.1f, 0.75f);
+
+            Renderer renderer = visual.GetComponent<Renderer>();
+            renderer.sharedMaterial = new Material(renderer.sharedMaterial) { color = new Color(0.6f, 0.1f, 0.1f) };
+
+            Pursuer pursuer = root.AddComponent<Pursuer>();
+
+            SerializedObject serialized = new SerializedObject(pursuer);
+            SetReference(serialized, "_visual", visual.transform);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            return pursuer;
         }
 
         private static void BuildBootstrap(
@@ -403,9 +436,13 @@ namespace Runner.EditorTools
             PlayerInputReader input,
             HudController hud,
             DifficultyCurve difficulty,
-            ObstacleTable obstacleTable)
+            ObstacleTable obstacleTable,
+            Pursuer pursuer,
+            CameraShake cameraShake)
         {
             SerializedObject serialized = new SerializedObject(gameManager);
+            SetReference(serialized, "_pursuer", pursuer);
+            SetReference(serialized, "_cameraShake", cameraShake);
             SetReference(serialized, "_player", player);
             SetReference(serialized, "_spawner", spawner);
             SetReference(serialized, "_input", input);

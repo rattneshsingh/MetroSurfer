@@ -52,6 +52,31 @@ namespace Runner.Core
                  "timer would be far kinder early in a run than late.")]
         [SerializeField] private float _streakBreakDistance = 60f;
 
+        [Header("Pursuit")]
+        [SerializeField] private Pursuer _pursuer;
+        [SerializeField] private CameraShake _cameraShake;
+
+        [Tooltip("Speed immediately after a stumble, as a fraction of normal. The dip is what " +
+                 "makes the pursuer's gain feel earned rather than arbitrary.")]
+        [SerializeField, Range(0.2f, 1f)] private float _stumbleSpeedMultiplier = 0.55f;
+
+        [Tooltip("How quickly that speed comes back, per second.")]
+        [SerializeField] private float _stumbleSpeedRecoveryPerSecond = 0.9f;
+
+        [Tooltip("Ground lost per stumble. At 0.34 it takes three to be caught.")]
+        [SerializeField] private float _stumbleCost = 0.34f;
+
+        [Tooltip("Ground regained per second while running on the street. Deliberately slow.")]
+        [SerializeField] private float _streetRecoveryPerSecond = 0.12f;
+
+        [Tooltip("Ground regained per second while up on the stack. He cannot follow you there, " +
+                 "so being chased is a reason to climb.")]
+        [SerializeField] private float _climbRecoveryPerSecond = 0.6f;
+
+        [Tooltip("Seconds of immunity after a stumble, so one obstacle cannot hit you twice " +
+                 "while it passes through you.")]
+        [SerializeField] private float _recoveryWindow = 0.7f;
+
         [Header("Feel")]
         [Tooltip("Beat between the hit landing and the game-over panel appearing.")]
         [SerializeField] private float _deathFreezeDuration = 0.45f;
@@ -66,10 +91,14 @@ namespace Runner.Core
         private float _speed;
         private float _deathTimer;
         private ScoreKeeper _scoring;
+        private PursuitState _pursuit;
+        private float _rearmTimer;
+        private float _speedPenalty;
 
         public GameState State => _gameState;
         public int Score => _scoring == null ? 0 : _scoring.Score;
         public int Multiplier => _scoring == null ? 1 : _scoring.Multiplier;
+        public float PursuitDistance => _pursuit == null ? 1f : _pursuit.Distance;
         public float Distance => _distance;
         public float Speed => _speed;
 
@@ -89,6 +118,12 @@ namespace Runner.Core
         private void EnsureInitialized()
         {
             ResolveTuningData();
+
+            if (_pursuit == null)
+            {
+                _pursuit = new PursuitState(
+                    _stumbleCost, _streetRecoveryPerSecond, _climbRecoveryPerSecond);
+            }
 
             if (_scoring == null)
             {
@@ -168,6 +203,19 @@ namespace Runner.Core
             _distance = 0f;
             _speed = _difficulty.StartSpeed;
             _scoring.Reset();
+            _pursuit.Reset();
+            _rearmTimer = 0f;
+            _speedPenalty = 0f;
+
+            if (_cameraShake != null)
+            {
+                _cameraShake.StopShake();
+            }
+
+            if (_pursuer != null)
+            {
+                _pursuer.Reset();
+            }
 
             // Pools reset in place. Reloading the scene would pay the whole warm-up cost again
             // and hitch on exactly the frame the player is most impatient.
@@ -213,7 +261,11 @@ namespace Runner.Core
         {
             float dt = Time.deltaTime;
 
-            _speed = _difficulty.EvaluateSpeed(_distance);
+            // The dip decays back to full speed rather than snapping, so recovering from a
+            // stumble is something you feel happening rather than a state that flips.
+            _speedPenalty = Mathf.Max(0f, _speedPenalty - _stumbleSpeedRecoveryPerSecond * dt);
+
+            _speed = _difficulty.EvaluateSpeed(_distance) * (1f - _speedPenalty);
             _distance += _speed * dt;
 
             if (_spawner != null)
@@ -224,6 +276,35 @@ namespace Runner.Core
             if (_scoring.Tick(_distance) && _hud != null)
             {
                 _hud.SetMultiplier(_scoring.Multiplier);
+            }
+
+            TickPursuit(dt);
+        }
+
+        /// <summary>
+        /// Height decides everything here. On the street the gap crawls back; on a roof it snaps
+        /// back, which is what makes climbing the answer to being chased rather than only the
+        /// way to score.
+        /// </summary>
+        private void TickPursuit(float deltaTime)
+        {
+            float height = _player == null ? 0f : _player.SupportHeight;
+            _pursuit.Tick(deltaTime, height);
+
+            if (_rearmTimer > 0f)
+            {
+                _rearmTimer -= deltaTime;
+
+                if (_rearmTimer <= 0f && _playerCollision != null)
+                {
+                    _playerCollision.Arm();
+                }
+            }
+
+            if (_pursuer != null)
+            {
+                float playerX = _player == null ? 0f : _player.LaneX;
+                _pursuer.UpdatePursuit(_pursuit.Distance, playerX, deltaTime, _pursuit.IsPursuing);
             }
         }
 
@@ -268,11 +349,43 @@ namespace Runner.Core
             }
         }
 
-        private void OnPlayerHit()
+        private void OnPlayerHit(HitSeverity severity)
         {
             if (_gameState != GameState.Playing)
             {
                 return;
+            }
+
+            // Clipping something while genuinely reacting to it costs ground, not the run. Only
+            // walking into it flat-footed, or stumbling with him already on you, ends it.
+            if (severity == HitSeverity.Glancing && !_pursuit.Stumble())
+            {
+                _scoring.BreakStreak();
+                _rearmTimer = _recoveryWindow;
+                _speedPenalty = 1f - _stumbleSpeedMultiplier;
+
+                if (_cameraShake != null)
+                {
+                    _cameraShake.Shake();
+                }
+
+                if (_player != null)
+                {
+                    _player.PlayStumble();
+                }
+
+                if (_hud != null)
+                {
+                    _hud.SetMultiplier(_scoring.Multiplier);
+                }
+
+                return;
+            }
+
+            // A fatal hit gets a harder knock than a stumble, so the two never read alike.
+            if (_cameraShake != null)
+            {
+                _cameraShake.Shake(0.5f, 0.5f);
             }
 
             _gameState = GameState.Dead;

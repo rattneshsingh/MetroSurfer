@@ -1,0 +1,87 @@
+using UnityEngine;
+
+namespace Runner.Core
+{
+    /// <summary>
+    /// The visible chaser. Reads one number and turns it into something you can feel behind you.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately dumb: it holds no rules and makes no decisions, so the pursuit logic stays
+    /// in a plain class that can be tested. This is the readout, not the mechanic.
+    /// </remarks>
+    public sealed class Pursuer : MonoBehaviour
+    {
+        [Tooltip("Z when he is on your heels. Just behind the player.")]
+        [SerializeField] private float _nearZ = -1.6f;
+
+        [Tooltip("Z when he has given up. Behind the camera, so he leaves frame entirely.")]
+        [SerializeField] private float _farZ = -9f;
+
+        [Tooltip("How quickly he slides to his new position. Snapping reads as teleporting.")]
+        [SerializeField] private float _followSharpness = 9f;
+
+        [Tooltip("How quickly he lines up with the player's lane.")]
+        [SerializeField] private float _lateralSharpness = 6f;
+
+        [SerializeField] private Transform _visual;
+
+        private Transform _transform;
+        private float _currentZ;
+        private bool _shown;
+
+        private void Awake()
+        {
+            _transform = transform;
+            _currentZ = _farZ;
+            Show(false);
+        }
+
+        public void Reset()
+        {
+            _currentZ = _farZ;
+            Show(false);
+
+            if (_transform == null)
+            {
+                _transform = transform;
+            }
+
+            _transform.localPosition = new Vector3(0f, 0f, _farZ);
+        }
+
+        /// <param name="distance">1 when out of sight, 0 when he has you.</param>
+        /// <param name="playerX">Lane position to line up with.</param>
+        public void UpdatePursuit(float distance, float playerX, float deltaTime, bool pursuing)
+        {
+            Show(pursuing);
+
+            if (!pursuing)
+            {
+                _currentZ = _farZ;
+                return;
+            }
+
+            float targetZ = Mathf.Lerp(_nearZ, _farZ, distance);
+
+            // Exponential smoothing rather than a fixed lerp factor, so the feel does not change
+            // with frame rate.
+            _currentZ = Mathf.Lerp(_currentZ, targetZ, 1f - Mathf.Exp(-_followSharpness * deltaTime));
+
+            Vector3 position = _transform.localPosition;
+            position.x = Mathf.Lerp(position.x, playerX, 1f - Mathf.Exp(-_lateralSharpness * deltaTime));
+            position.z = _currentZ;
+            _transform.localPosition = position;
+        }
+
+        private void Show(bool visible)
+        {
+            if (_shown == visible || _visual == null)
+            {
+                return;
+            }
+
+            _shown = visible;
+            _visual.gameObject.SetActive(visible);
+        }
+    }
+}

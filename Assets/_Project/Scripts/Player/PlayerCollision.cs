@@ -17,18 +17,26 @@ namespace Runner.Player
         [SerializeField] private string _obstacleLayerName = "Obstacle";
         [SerializeField] private string _coinLayerName = "Coin";
 
+        [Tooltip("Read to decide whether a hit was a stumble or a flat-footed collision.")]
+        [SerializeField] private LaneController _lane;
+
         private int _obstacleLayer = -1;
         private int _coinLayer = -1;
         private bool _armed = true;
 
-        /// <summary>Raised once per run, when the player hits an obstacle.</summary>
-        public event System.Action Hit;
+        /// <summary>Raised when the player hits an obstacle, with how badly.</summary>
+        public event System.Action<HitSeverity> Hit;
 
         /// <summary>Raised with the coin's value.</summary>
         public event System.Action<int> CoinCollected;
 
         private void Awake()
         {
+            if (_lane == null)
+            {
+                _lane = GetComponent<LaneController>();
+            }
+
             _obstacleLayer = LayerMask.NameToLayer(_obstacleLayerName);
             _coinLayer = LayerMask.NameToLayer(_coinLayerName);
 
@@ -51,6 +59,22 @@ namespace Runner.Player
             _armed = false;
         }
 
+        /// <summary>
+        /// Were you doing something when you hit it? Mid lane-change, airborne or rolling all
+        /// mean you were reacting, and reacting badly should cost ground rather than the run.
+        /// Standing still and walking into it means you were not reacting at all.
+        /// </summary>
+        private HitSeverity Classify()
+        {
+            if (_lane == null)
+            {
+                return HitSeverity.HeadOn;
+            }
+
+            bool reacting = _lane.IsChangingLanes || !_lane.IsGrounded || _lane.IsSliding;
+            return reacting ? HitSeverity.Glancing : HitSeverity.HeadOn;
+        }
+
         private void OnTriggerEnter(Collider other)
         {
             if (!_armed)
@@ -62,8 +86,10 @@ namespace Runner.Player
 
             if (layer == _obstacleLayer)
             {
+                // Disarmed until the run's owner re-arms, so one obstacle cannot register
+                // three separate stumbles as it passes through you.
                 _armed = false;
-                Hit?.Invoke();
+                Hit?.Invoke(Classify());
                 return;
             }
 
