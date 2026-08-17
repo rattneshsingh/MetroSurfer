@@ -118,15 +118,10 @@ namespace Runner.Spawning
         private int _head;
         private int _rowsPerSegment;
 
-        /// <summary>Indexed by ObstacleKind, so a lookup is an array read.</summary>
-        private ObjectPool<Obstacle>[] _poolsByKind;
-        private ObjectPool<Coin> _coinPool;
+        private ObstacleFactory _obstacles;
+        private CoinPlacer _coins;
 
         private Material _groundMaterial;
-        private Material _obstacleMaterial;
-        private Material _coinMaterial;
-        private Material _pitMaterial;
-        private Material _brakeMaterial;
 
         private int _obstacleLayer;
         private int _coinLayer;
@@ -140,7 +135,7 @@ namespace Runner.Spawning
         private bool _built;
 
         /// <summary>False after a mid-play recompile has wiped the runtime state.</summary>
-        public bool IsBuilt => _built && _segments != null && _poolsByKind != null && _generator != null;
+        public bool IsBuilt => _built && _segments != null && _obstacles != null && _generator != null;
 
         /// <summary>Builds every pool and the segment ring. Call once, before the first run.</summary>
         public void Initialize(
@@ -180,8 +175,8 @@ namespace Runner.Spawning
             _poolRoot = new GameObject("~Pools").transform;
             _poolRoot.SetParent(transform, false);
 
-            BuildMaterials();
-            BuildPools();
+            _groundMaterial = PrimitiveFactory.CreateSharedMaterial(_groundColor, "M_Ground");
+            BuildCollaborators();
             BuildSegmentRing();
 
             _built = true;
@@ -237,7 +232,7 @@ namespace Runner.Spawning
                 t.localPosition = position;
             }
 
-            TickMovingObstacles(deltaTime);
+            _obstacles.TickDrift(deltaTime);
             CullPassedObstacles();
 
             // At most one segment passes the despawn line per frame at any sane speed, but loop
@@ -251,55 +246,6 @@ namespace Runner.Spawning
                 }
 
                 RecycleHead(distance);
-            }
-        }
-
-        /// <summary>
-        /// Only the segment straddling the cull line can hold anything newly passed: segments
-        /// ahead have nothing behind the player yet, and segments fully past it were already
-        /// dealt with on an earlier frame. So this is one segment's worth of work, not fourteen.
-        /// </summary>
-        /// <summary>
-        /// Sweeps the moving-truck pool once per frame. Capacity is small and the check is two
-        /// array reads, so this costs less than giving every truck its own Update.
-        /// </summary>
-        private void TickMovingObstacles(float deltaTime)
-        {
-
-            for (int i = 0; i < _catalog.Count; i++)
-            {
-                ObstacleDefinition definition = _catalog.At(i);
-                if (definition == null || definition.Drift == DriftMode.None)
-                {
-                    continue;
-                }
-
-                Material alert = definition.Drift == DriftMode.Decelerate ? _brakeMaterial : null;
-                TickDriftPool(PoolFor(definition.Kind), deltaTime, alert);
-            }
-        }
-
-        private static void TickDriftPool(ObjectPool<Obstacle> pool, float deltaTime, Material alertMaterial)
-        {
-            if (pool == null)
-            {
-                return;
-            }
-
-            for (int i = 0; i < pool.Capacity; i++)
-            {
-                if (!pool.TryGetActive(i, out Obstacle obstacle) || obstacle.Drift == null)
-                {
-                    continue;
-                }
-
-                obstacle.Drift.Tick(deltaTime);
-
-                // Consumed rather than polled, so the swap costs one call on one frame.
-                if (alertMaterial != null && obstacle.Drift.ConsumeBrakeStarted())
-                {
-                    obstacle.SetMaterial(alertMaterial);
-                }
             }
         }
 
@@ -373,7 +319,7 @@ namespace Runner.Spawning
 
             if (plan.CoinArc)
             {
-                EmitCoinArc(segment, plan.CoinLane, localZ, _catalog.RoofHeight(plan.Kind), speed);
+                _coins.EmitArc(segment, plan.CoinLane, localZ, _catalog.RoofHeight(plan.Kind), speed, _jump);
                 return;
             }
 
@@ -381,52 +327,7 @@ namespace Runner.Spawning
                 ? _catalog.RoofHeight(plan.Kind) + _coinHeight
                 : _coinHeight;
 
-            EmitCoinTrail(segment, plan.CoinLane, localZ, height);
-        }
-
-        /// <summary>
-        /// Lays coins along the exact parabola of a well-timed jump across this gap.
-        /// </summary>
-        /// <remarks>
-        /// The arc is computed, never authored, because its shape depends on run speed: the same
-        /// jump covers about 6.5m at the starting pace and roughly 16m at full tilt, so a drawn
-        /// arc would be wrong everywhere except one speed. Deriving it from the live jump profile
-        /// and the predicted speed also means the line is honest — if the coins say the jump is
-        /// makeable, it is.
-        /// </remarks>
-        private void EmitCoinArc(Segment segment, int lane, float localZ, float launchHeight, float speed)
-        {
-            if (!_jump.IsValid || _arcCoinCount < 2)
-            {
-                EmitCoinTrail(segment, lane, localZ, launchHeight + _coinHeight);
-                return;
-            }
-
-            float airTime = _jump.AirTime;
-            float span = speed * airTime;
-            float x = LaneToX(lane);
-            float startZ = localZ - span * 0.5f;
-
-            for (int i = 0; i < _arcCoinCount; i++)
-            {
-                if (!segment.HasCoinRoom)
-                {
-                    return;
-                }
-
-                float t = airTime * i / (_arcCoinCount - 1);
-
-                Coin coin = _coinPool.Get(out int handle);
-
-                Transform transformCache = coin.transform;
-                transformCache.SetParent(segment.Root, false);
-                transformCache.localPosition = new Vector3(
-                    x,
-                    launchHeight + _coinHeight + _jump.HeightAt(t),
-                    startZ + speed * t);
-
-                segment.AddCoin(coin, handle);
-            }
+            _coins.EmitTrail(segment, plan.CoinLane, localZ, height);
         }
 
         private void PlaceRow(Segment segment, int mask, ObstacleKind kind, float localZ)
@@ -441,230 +342,6 @@ namespace Runner.Spawning
         }
 
 
-        private ObjectPool<Obstacle> PoolFor(ObstacleKind kind)
-        {
-            int index = (int)kind;
-            return (uint)index < (uint)_poolsByKind.Length ? _poolsByKind[index] : null;
-        }
-
-        private void BuildPools()
-        {
-            int autoCapacity = _activeSegmentCount * _rowsPerSegment;
-            _poolsByKind = new ObjectPool<Obstacle>[KindCount];
-
-            for (int i = 0; i < _catalog.Count; i++)
-            {
-                ObstacleDefinition definition = _catalog.At(i);
-                if (definition == null)
-                {
-                    continue;
-                }
-
-                int index = (int)definition.Kind;
-                if ((uint)index >= (uint)_poolsByKind.Length)
-                {
-                    continue;
-                }
-
-                int capacity = definition.PoolCapacity > 0 ? definition.PoolCapacity : autoCapacity;
-
-                // Captured once at build time. The closure allocates here and never on a spawn,
-                // which is the only place it would matter.
-                ObstacleDefinition captured = definition;
-                _poolsByKind[index] = new ObjectPool<Obstacle>(
-                    () => CreateFor(captured), _poolRoot, capacity, "Obstacle." + definition.Kind);
-            }
-
-            int coinCapacity = _coinPoolCapacity > 0
-                ? _coinPoolCapacity
-                : _activeSegmentCount * _rowsPerSegment * _coinsPerRow;
-
-            _coinPool = new ObjectPool<Coin>(CreateCoin, _poolRoot, coinCapacity, "Coin");
-        }
-
-        /// <summary>
-        /// Builds one obstacle from its definition. Dispatching on form rather than on kind is
-        /// the whole point of the catalogue: a new obstacle is a new entry, and only a genuinely
-        /// new shape reaches this method at all.
-        /// </summary>
-        private Obstacle CreateFor(ObstacleDefinition definition)
-        {
-            if (definition.Prefab != null)
-            {
-                GameObject authored = Instantiate(definition.Prefab);
-                Obstacle existing = authored.GetComponent<Obstacle>();
-                Obstacle fromPrefab = existing != null ? existing : authored.AddComponent<Obstacle>();
-                fromPrefab.Initialize(definition.Kind);
-                return fromPrefab;
-            }
-
-            Obstacle obstacle;
-
-            switch (definition.Form)
-            {
-                case ObstacleForm.Landable:
-                    obstacle = BuildLandable(definition);
-                    break;
-
-                case ObstacleForm.Ramp:
-                    obstacle = BuildRamp(definition);
-                    break;
-
-                case ObstacleForm.Pit:
-                    obstacle = BuildPit(definition);
-                    break;
-
-                default:
-                    obstacle = BuildBarrier(definition);
-                    break;
-            }
-
-            if (definition.Drift != DriftMode.None)
-            {
-                obstacle.gameObject.AddComponent<MovingObstacle>().Initialize();
-            }
-
-            obstacle.Initialize(definition.Kind);
-            return obstacle;
-        }
-
-        /// <summary>
-        /// A solid, lethal box. Ground barriers and overhead slabs are the same thing at
-        /// different base heights.
-        /// </summary>
-        private Obstacle BuildBarrier(ObstacleDefinition definition)
-        {
-            GameObject root = new GameObject("Obstacle_" + definition.Kind);
-
-            GameObject body = PrimitiveFactory.CreateCube(
-                "Body", definition.Size, MaterialFor(definition.Tint), _obstacleLayer,
-                PrimitiveFactory.ColliderMode.Trigger, castShadows: true);
-
-            body.transform.SetParent(root.transform, false);
-            body.transform.localPosition = new Vector3(
-                0f, definition.BaseHeight + definition.Size.y * 0.5f, 0f);
-
-            return root.AddComponent<Obstacle>();
-        }
-
-        /// <summary>
-        /// Solid body on the Surface layer for the ground probe, plus a lethal trigger inset
-        /// below the roof. That inset is the entire mechanic — land on top and you are above the
-        /// lethal volume, clip the side and you are inside it.
-        /// </summary>
-        private Obstacle BuildLandable(ObstacleDefinition definition)
-        {
-            GameObject root = new GameObject("Obstacle_" + definition.Kind);
-
-            GameObject body = PrimitiveFactory.CreateCube(
-                "Body", definition.Size, MaterialFor(definition.Tint), _surfaceLayer,
-                PrimitiveFactory.ColliderMode.Solid, castShadows: true);
-
-            body.transform.SetParent(root.transform, false);
-            body.transform.localPosition = new Vector3(
-                0f, definition.BaseHeight + definition.Size.y * 0.5f, 0f);
-
-            AddLethalVolume(root, definition);
-            return root.AddComponent<Obstacle>();
-        }
-
-        /// <summary>Never lethal. It exists purely to raise the ground.</summary>
-        private Obstacle BuildRamp(ObstacleDefinition definition)
-        {
-            GameObject root = new GameObject("Obstacle_" + definition.Kind);
-
-            float angle = Mathf.Atan2(definition.RampRise, definition.RampRun) * Mathf.Rad2Deg;
-            float slopeLength = Mathf.Sqrt(
-                definition.RampRise * definition.RampRise + definition.RampRun * definition.RampRun);
-
-            GameObject slope = PrimitiveFactory.CreateCube(
-                "Slope",
-                new Vector3(definition.Size.x, definition.RampThickness, slopeLength),
-                MaterialFor(definition.Tint), _surfaceLayer,
-                PrimitiveFactory.ColliderMode.Solid, castShadows: true);
-
-            slope.transform.SetParent(root.transform, false);
-
-            // Negative pitch lifts the far end, which is the end the player reaches last as the
-            // world scrolls toward them.
-            slope.transform.localRotation = Quaternion.Euler(-angle, 0f, 0f);
-            slope.transform.localPosition = new Vector3(
-                0f, definition.RampRise * 0.5f, definition.RampRun * 0.5f);
-
-            return root.AddComponent<Obstacle>();
-        }
-
-        /// <summary>
-        /// A hole, rendered as a near-black slab just proud of the road. Punching a real gap
-        /// would mean tiling every segment floor per lane and per row, and this plays the same:
-        /// jump it, or be somewhere else.
-        /// </summary>
-        private Obstacle BuildPit(ObstacleDefinition definition)
-        {
-            GameObject root = new GameObject("Obstacle_" + definition.Kind);
-
-            GameObject slab = PrimitiveFactory.CreateCube(
-                "Slab", definition.Size, MaterialFor(definition.Tint), root.layer,
-                PrimitiveFactory.ColliderMode.None, castShadows: false);
-
-            slab.transform.SetParent(root.transform, false);
-            slab.transform.localPosition = new Vector3(
-                0f, definition.BaseHeight + definition.Size.y * 0.5f, 0f);
-
-            AddLethalVolume(root, definition);
-            return root.AddComponent<Obstacle>();
-        }
-
-        /// <summary>The kill volume, whose bounds the definition works out per form.</summary>
-        private void AddLethalVolume(GameObject root, ObstacleDefinition definition)
-        {
-            GameObject lethal = new GameObject("Lethal");
-            lethal.layer = _obstacleLayer;
-            lethal.transform.SetParent(root.transform, false);
-
-            float bottom = definition.LethalBottom;
-            float height = Mathf.Max(0.05f, definition.LethalTop - bottom);
-
-            BoxCollider box = lethal.AddComponent<BoxCollider>();
-            box.isTrigger = true;
-            box.center = new Vector3(0f, bottom + height * 0.5f, 0f);
-            box.size = new Vector3(definition.Size.x, height, definition.Size.z);
-        }
-
-        private Material MaterialFor(ObstacleTint tint) =>
-            tint == ObstacleTint.Pit ? _pitMaterial : _obstacleMaterial;
-
-        /// <summary>
-        /// Drift is applied by mode, so the parameters stay shared across kinds rather than
-        /// being duplicated into every definition that moves.
-        /// </summary>
-        private void ApplyDrift(Obstacle obstacle, ObstacleKind kind)
-        {
-            if (obstacle.Drift == null)
-            {
-                return;
-            }
-
-            ObstacleDefinition definition = _catalog.Get(kind);
-            DriftMode mode = definition == null ? DriftMode.Oscillate : definition.Drift;
-
-            switch (mode)
-            {
-                case DriftMode.Approach:
-                    obstacle.Drift.BeginApproach(_oncomingSpeed, _oncomingMaxTravel);
-                    break;
-
-                case DriftMode.Decelerate:
-                    obstacle.Drift.BeginBraking(_busCruiseSpeed, _busBrakeTriggerZ, _busBrakeDuration);
-                    break;
-
-                default:
-                    // Phase varies per placement so a convoy ripples rather than moving as a block.
-                    obstacle.Drift.BeginOscillation(_driftAmplitude, _driftPeriod, Roll() * Mathf.PI * 2f);
-                    break;
-            }
-        }
-
         private void PlaceObstacle(Segment segment, int lane, ObstacleKind kind, float localZ)
         {
             if (!segment.HasObstacleRoom)
@@ -672,85 +349,34 @@ namespace Runner.Spawning
                 return;
             }
 
-            ObjectPool<Obstacle> pool = PoolFor(kind);
-            Obstacle obstacle = pool.Get(out int handle);
+            Obstacle obstacle = _obstacles.Get(kind, out int handle);
+            if (obstacle == null)
+            {
+                return;
+            }
 
             Transform t = obstacle.transform;
             t.SetParent(segment.Root, false);
             t.localPosition = new Vector3(LaneToX(lane), 0f, localZ);
 
-            ApplyDrift(obstacle, kind);
-
             segment.AddObstacle(obstacle, handle, kind, localZ);
         }
 
-        private void EmitCoinTrail(Segment segment, int lane, float localZ, float height)
-        {
-            float x = LaneToX(lane);
-            float startZ = localZ - (_coinsPerRow - 1) * _coinSpacing * 0.5f;
-
-            for (int i = 0; i < _coinsPerRow; i++)
-            {
-                if (!segment.HasCoinRoom)
-                {
-                    return;
-                }
-
-                Coin coin = _coinPool.Get(out int handle);
-
-                Transform t = coin.transform;
-                t.SetParent(segment.Root, false);
-                t.localPosition = new Vector3(x, height, startZ + i * _coinSpacing);
-
-                segment.AddCoin(coin, handle);
-            }
-        }
-
-
-
         private void ReleaseContents(Segment segment)
         {
-            // Deliberately one operation per line. Packing these into a single expression made
-            // a NullReferenceException here impossible to localise, because the accessors are
-            // one-liners the JIT inlines away and the stack trace collapses onto the caller.
-            if (segment == null)
+            for (int i = 0; i < segment.ObstacleCount; i++)
             {
-                Debug.LogError($"[{nameof(SegmentSpawner)}] ReleaseContents got a null segment.", this);
-                return;
+                _obstacles.Release(segment.GetObstacleKind(i), segment.GetObstacleHandle(i));
             }
 
-            int obstacleCount = segment.ObstacleCount;
-            for (int i = 0; i < obstacleCount; i++)
+            for (int i = 0; i < segment.CoinCount; i++)
             {
-                ObstacleKind kind = segment.GetObstacleKind(i);
-                int handle = segment.GetObstacleHandle(i);
-                ObjectPool<Obstacle> pool = PoolFor(kind);
-
-                if (pool == null)
-                {
-                    Debug.LogError($"[{nameof(SegmentSpawner)}] No pool for kind '{kind}' " +
-                                   $"(index {i} of {obstacleCount}, handle {handle}).", this);
-                    continue;
-                }
-
-                pool.Release(handle);
-            }
-
-            int coinCount = segment.CoinCount;
-            if (coinCount > 0 && _coinPool == null)
-            {
-                Debug.LogError($"[{nameof(SegmentSpawner)}] Coin pool is null with {coinCount} coins attached.", this);
-            }
-            else
-            {
-                for (int i = 0; i < coinCount; i++)
-                {
-                    _coinPool.Release(segment.GetCoinHandle(i));
-                }
+                _coins.Release(segment.GetCoinHandle(i));
             }
 
             segment.ClearContents();
         }
+
 
         private float LaneToX(int lane) => (lane - (LaneCount - 1) * 0.5f) * _laneWidth;
 
@@ -773,16 +399,9 @@ namespace Runner.Spawning
         {
             // Materials are created with `new Material(...)` at warm-up, so nothing else owns
             // them. Without this Unity reports leaked material instances on scene unload.
-            DestroyMaterial(_groundMaterial);
-            DestroyMaterial(_obstacleMaterial);
-            DestroyMaterial(_coinMaterial);
-            DestroyMaterial(_pitMaterial);
-            DestroyMaterial(_brakeMaterial);
-        }
-
-        private static void DestroyMaterial(Material material)
-        {
-            ObjectUtility.Destroy(material);
+            ObjectUtility.Destroy(_groundMaterial);
+            _obstacles?.Dispose();
+            _coins?.Dispose();
         }
 
         private void ApplyPalette(StateConfig state)
@@ -823,13 +442,36 @@ namespace Runner.Spawning
             }
         }
 
-        private void BuildMaterials()
+        /// <summary>
+        /// Hands the factory and the coin placer everything they need. The spawner keeps only
+        /// what it uses itself: the ground material and the segment ring.
+        /// </summary>
+        private void BuildCollaborators()
         {
-            _groundMaterial = PrimitiveFactory.CreateSharedMaterial(_groundColor, "M_Ground");
-            _obstacleMaterial = PrimitiveFactory.CreateSharedMaterial(_obstacleColor, "M_Obstacle");
-            _coinMaterial = PrimitiveFactory.CreateSharedMaterial(_coinColor, "M_Coin");
-            _pitMaterial = PrimitiveFactory.CreateSharedMaterial(_pitColor, "M_Pit");
-            _brakeMaterial = PrimitiveFactory.CreateSharedMaterial(_brakeColor, "M_Brake");
+            int autoCapacity = _activeSegmentCount * _rowsPerSegment;
+
+            _obstacles = new ObstacleFactory(
+                _catalog,
+                _poolRoot,
+                new ObstacleFactorySettings(
+                    _obstacleLayer, _surfaceLayer, autoCapacity,
+                    _obstacleColor, _pitColor, _brakeColor,
+                    _driftAmplitude, _driftPeriod,
+                    _oncomingSpeed, _oncomingMaxTravel,
+                    _busCruiseSpeed, _busBrakeTriggerZ, _busBrakeDuration),
+                Roll);
+
+            int coinCapacity = _coinPoolCapacity > 0
+                ? _coinPoolCapacity
+                : _activeSegmentCount * _rowsPerSegment * _coinsPerRow;
+
+            _coins = new CoinPlacer(
+                _poolRoot,
+                new CoinPlacerSettings(
+                    _coinLayer, coinCapacity, _coinColor, _coinSize,
+                    _coinSpacing, _coinHeight, _coinsPerRow, _coinValue,
+                    _arcCoinCount, _laneWidth),
+                _coinPrefab);
         }
 
         private void BuildSegmentRing()
@@ -872,32 +514,5 @@ namespace Runner.Spawning
             return root.AddComponent<Segment>();
         }
 
-
-
-
-        private Coin CreateCoin()
-        {
-            Coin coin;
-
-            if (_coinPrefab != null)
-            {
-                coin = Instantiate(_coinPrefab);
-            }
-            else
-            {
-                GameObject go = PrimitiveFactory.CreateCube(
-                    "Coin",
-                    _coinSize,
-                    _coinMaterial,
-                    _coinLayer,
-                    PrimitiveFactory.ColliderMode.Trigger,
-                    castShadows: false);
-
-                coin = go.AddComponent<Coin>();
-            }
-
-            coin.Initialize(_coinValue);
-            return coin;
-        }
     }
 }
