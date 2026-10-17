@@ -135,6 +135,19 @@ namespace Runner.Spawning
                 return NextFormationRow();
             }
 
+            // Up on the stack, only a chunk keeps a floor under the player. Every other row is
+            // open road, so falling through to one means the player is back on the street, and
+            // the generator has to agree or it will hand out roof runs nobody can reach.
+            if (_state == TrackState.Elevated)
+            {
+                if (_table != null && TryStartFormation(rowDistance))
+                {
+                    return NextFormationRow();
+                }
+
+                _state = TrackState.Street;
+            }
+
             if (_rowsSinceHardRow < _minRowGapAfterHardRow || Roll() >= density)
             {
                 // Every row advances the gap counter, including skipped ones. Otherwise a forced
@@ -219,6 +232,13 @@ namespace Runner.Spawning
             _formationRow++;
             if (_formationRow >= _activeFormation.RowCount)
             {
+                // A chunk that works from either level ends wherever its last row leaves the
+                // player: on a roof if there is one to stand on, otherwise on the road.
+                if (_activeFormation.Exit == TrackState.Either)
+                {
+                    _state = mask != 0 && IsLandable(row.Kind) ? TrackState.Elevated : TrackState.Street;
+                }
+
                 _activeFormation = null;
                 _formationRow = 0;
             }

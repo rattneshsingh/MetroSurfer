@@ -10,7 +10,7 @@ namespace Runner.Config
     public sealed class ObstacleTable : ScriptableObject
     {
         /// <summary>Bumped whenever the built-in defaults change.</summary>
-        public const int CurrentDefaultsVersion = 2;
+        public const int CurrentDefaultsVersion = 4;
 
         [HideInInspector]
         [SerializeField] private int _defaultsVersion;
@@ -380,7 +380,8 @@ namespace Runner.Config
                     RowCoins(0b110, ObstacleKind.Truck),
                     RowCoins(0b100, ObstacleKind.Truck)),
 
-                Chunk("Up to the train", 1.0f, 0.55f, TrackState.Elevated, TrackState.Elevated,
+                // Ends on open road, so it ends on the street: the clear row is a drop, not a gap.
+                Chunk("Up to the train", 1.0f, 0.55f, TrackState.Elevated, TrackState.Street,
                     RowCoins(0b010, ObstacleKind.Truck),
                     RowCoins(0b010, ObstacleKind.Train),
                     Clear(false)),
@@ -414,7 +415,10 @@ namespace Runner.Config
                     Row(All, ObstacleKind.High),
                     Clear(true)),
 
+                // Opens clear like the other bus chunks: a stopping bus only tests reading
+                // ahead if there is room to read it.
                 Chunk("Traffic jam", 0.8f, 0.88f, TrackState.Street, TrackState.Street,
+                    Clear(false),
                     Row(0b001, ObstacleKind.StoppingBus),
                     Row(0b100, ObstacleKind.OncomingTruck),
                     Row(0b010, ObstacleKind.Full),

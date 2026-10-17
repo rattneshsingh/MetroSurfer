@@ -39,6 +39,14 @@ namespace Runner.Tests
         private TrackGenerator NewGenerator(int seed = 1234) =>
             new TrackGenerator(seed, _intro, _table, _catalog, minRowGapAfterHardRow: 1);
 
+        /// <summary>Vehicles that move at the player or brake in front of them: dodged, not climbed.</summary>
+        private bool IsTraffic(ObstacleKind kind)
+        {
+            ObstacleDefinition definition = _catalog.Get(kind);
+            return definition != null &&
+                   (definition.Drift == DriftMode.Approach || definition.Drift == DriftMode.Decelerate);
+        }
+
         /// <summary>
         /// The fairness invariant. A row that closes every lane cannot be survived by any
         /// input, so generating one is a guaranteed unfair death.
@@ -318,11 +326,18 @@ namespace Runner.Tests
         /// could actually be standing on one — directly after another roof, after a ramp, or
         /// across a gap that a roof-to-roof jump spans. Anything else is a platform floating in
         /// mid-air that the player has no way to reach.
+        /// <para>
+        /// Traffic is exempt. Oncoming trucks and stopping buses can be landed on, but on the
+        /// street they are hazards to dodge, not roofs the player is meant to be standing on.
+        /// </para>
         /// </summary>
         [Test]
-        public void RoofsOnlyAppearWhereThePlayerCouldReachThem()
+        public void RoofsOnlyAppearWhereThePlayerCouldReachThem(
+            [Values(1234, 1, 7, 42, 99, 2024)] int seed)
         {
-            TrackGenerator generator = NewGenerator();
+            // Several seeds, because a single one walked straight past the state desync this
+            // test exists to catch.
+            TrackGenerator generator = NewGenerator(seed);
             RowPlan previous = default;
             int roofsChecked = 0;
 
@@ -330,7 +345,7 @@ namespace Runner.Tests
             {
                 RowPlan plan = generator.NextRow(row * RowSpacing, density: 0.9f, coinChance: 0.4f);
 
-                if (plan.HasObstacles && _catalog.IsLandable(plan.Kind))
+                if (plan.HasObstacles && _catalog.IsLandable(plan.Kind) && !IsTraffic(plan.Kind))
                 {
                     bool reachable =
                         previous.CoinArc ||
