@@ -11,17 +11,19 @@ namespace Runner.Config
     {
         [Header("Speed (metres/second)")]
         [SerializeField] private float _startSpeed = 8f;
-        [SerializeField] private float _maxSpeed = 26f;
+        [SerializeField] private float _maxSpeed = 30f;
 
-        [Tooltip("Distance in metres over which speed climbs from start to max.")]
-        [SerializeField] private float _rampDistance = 2200f;
+        [Tooltip("Metres over which speed climbs from start to max. Tuned so the first minute " +
+                 "is a warm-up: around 600m -- roughly a minute of play -- the pace reaches the " +
+                 "speed the game is really pitched at, and keeps climbing from there.")]
+        [SerializeField] private float _rampDistance = 1800f;
 
         [Tooltip("Normalised distance (x) to normalised speed (y).")]
         [SerializeField] private AnimationCurve _speedOverDistance = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("Obstacle density (chance a given row spawns something)")]
-        [SerializeField, Range(0f, 1f)] private float _startObstacleDensity = 0.30f;
-        [SerializeField, Range(0f, 1f)] private float _maxObstacleDensity = 0.80f;
+        [SerializeField, Range(0f, 1f)] private float _startObstacleDensity = 0.55f;
+        [SerializeField, Range(0f, 1f)] private float _maxObstacleDensity = 0.92f;
         [SerializeField] private AnimationCurve _obstacleDensityOverDistance = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("Coins")]

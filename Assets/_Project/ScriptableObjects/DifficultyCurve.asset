@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: DifficultyCurve
   m_EditorClassIdentifier: Runner::Runner.Config.DifficultyCurve
   _startSpeed: 8
-  _maxSpeed: 26
-  _rampDistance: 2200
+  _maxSpeed: 30
+  _rampDistance: 1800
   _speedOverDistance:
     serializedVersion: 2
     m_Curve:
@@ -39,8 +39,8 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  _startObstacleDensity: 0.3
-  _maxObstacleDensity: 0.8
+  _startObstacleDensity: 0.55
+  _maxObstacleDensity: 0.92
   _obstacleDensityOverDistance:
     serializedVersion: 2
     m_Curve:

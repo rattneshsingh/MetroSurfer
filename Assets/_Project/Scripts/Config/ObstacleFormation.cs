@@ -24,9 +24,21 @@ namespace Runner.Config
         [Min(0f)]
         public float Weight = 1f;
 
-        [Tooltip("Metres of run distance before this formation may appear.")]
+        [Tooltip("Metres of run distance before this may appear at all. Most chunks should leave " +
+                 "this at zero and let Difficulty do the gating instead.")]
         [Min(0f)]
         public float MinDistance;
+
+        [Tooltip("How hard this is, 0 to 1. The generator picks from a band that rises with " +
+                 "distance, so this is what keeps early running fair and late running brutal.")]
+        [Range(0f, 1f)]
+        public float Difficulty = 0.3f;
+
+        [Tooltip("Where the player must be for this to make sense as an opening.")]
+        public TrackState Entry = TrackState.Street;
+
+        [Tooltip("Where the player will be when it ends. The next chunk has to accept this.")]
+        public TrackState Exit = TrackState.Street;
 
         public int RowCount => Rows == null ? 0 : Rows.Length;
     }

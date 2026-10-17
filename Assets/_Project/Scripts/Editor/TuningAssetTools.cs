@@ -26,7 +26,8 @@ namespace Runner.EditorTools
         {
             bool confirmed = EditorUtility.DisplayDialog(
                 "Reset tuning assets?",
-                "This overwrites ObstacleTable, ObstacleCatalog, IntroSequence and DifficultyCurve with the " +
+                "This overwrites every tuning asset -- ObstacleTable, ObstacleCatalog, IntroSequence, "  +
+                "DifficultyCurve, PlayerTuning and RunTuning -- with the " +
                 "defaults defined in code.\n\nAny values you have tuned on those assets will be lost. " +
                 "Scene references are preserved.",
                 "Reset",
@@ -42,6 +43,8 @@ namespace Runner.EditorTools
             refreshed += Refresh($"{Folder}/ObstacleCatalog.asset", ObstacleCatalog.CreateDefault) ? 1 : 0;
             refreshed += Refresh($"{Folder}/IntroSequence.asset", IntroSequence.CreateDefault) ? 1 : 0;
             refreshed += Refresh($"{Folder}/DifficultyCurve.asset", DifficultyCurve.CreateDefault) ? 1 : 0;
+            refreshed += Refresh($"{Folder}/PlayerTuning.asset", PlayerTuning.CreateDefault) ? 1 : 0;
+            refreshed += Refresh($"{Folder}/RunTuning.asset", RunTuning.CreateDefault) ? 1 : 0;
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();

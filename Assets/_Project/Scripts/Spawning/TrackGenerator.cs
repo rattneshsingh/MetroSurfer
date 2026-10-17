@@ -22,6 +22,31 @@ namespace Runner.Spawning
         /// <summary>Saturation point for the row-gap counter. Prevents int overflow on a long run.</summary>
         private const int RowGapCeiling = 1000;
 
+        /// <summary>How many recent chunks are barred from repeating.</summary>
+        private const int RecentMemory = 4;
+
+        /// <summary>
+        /// Metres over which the difficulty band climbs from opening to full. Deliberately short:
+        /// content the player never reaches may as well not exist, and most runs end well inside
+        /// a kilometre.
+        /// </summary>
+        private const float DifficultyRampDistance = 700f;
+
+        /// <summary>
+        /// Hardest chunk allowed at the very start. High enough that the opening already has
+        /// sequences in it rather than only single obstacles.
+        /// </summary>
+        private const float OpeningDifficulty = 0.4f;
+
+        /// <summary>How far below the ceiling a chunk may sit before it is beneath the player.</summary>
+        private const float BandWidth = 0.45f;
+
+        /// <summary>Rolling intensity above this forces a breather.</summary>
+        private const float BreatherThreshold = 0.55f;
+
+        /// <summary>Hardest chunk that counts as a breather.</summary>
+        private const float BreatherCeiling = 0.25f;
+
         private readonly IntroSequence _intro;
         private readonly ObstacleTable _table;
         private readonly ObstacleCatalog _catalog;
@@ -34,6 +59,11 @@ namespace Runner.Spawning
         private int _coinLane;
         private ObstacleFormation _activeFormation;
         private int _formationRow;
+
+        private TrackState _state;
+        private float _intensity;
+        private readonly ObstacleFormation[] _recent = new ObstacleFormation[RecentMemory];
+        private int _recentCount;
 
         public int RowsGenerated => _rowsGenerated;
         public bool InFormation => _activeFormation != null;
@@ -62,6 +92,15 @@ namespace Runner.Spawning
             _coinLane = LaneCount / 2;
             _activeFormation = null;
             _formationRow = 0;
+
+            _state = TrackState.Street;
+            _intensity = 0f;
+            _recentCount = 0;
+
+            for (int i = 0; i < _recent.Length; i++)
+            {
+                _recent[i] = null;
+            }
         }
 
         public RowPlan NextRow(float rowDistance, float density, float coinChance)
@@ -104,17 +143,72 @@ namespace Runner.Spawning
                 return Build(0, ObstacleKind.Low, Roll() < coinChance);
             }
 
-            if (_table != null &&
-                Roll() < _table.FormationChance &&
-                _table.TryPickFormation(rowDistance, Roll(), out ObstacleFormation formation) &&
-                formation.RowCount > 0)
+            if (_table != null && Roll() < _table.FormationChance && TryStartFormation(rowDistance))
             {
-                _activeFormation = formation;
-                _formationRow = 0;
                 return NextFormationRow();
             }
 
             return NextSingleRow(rowDistance, coinChance);
+        }
+
+        /// <summary>
+        /// Chooses the next chunk and starts it.
+        /// </summary>
+        /// <remarks>
+        /// This is where the level stops being random. Four rules do the work: the difficulty
+        /// band rises with distance so early running is fair and late running is not; the entry
+        /// state must match where the player actually is, so a roof run cannot begin on the road;
+        /// recent chunks are barred so nothing repeats back to back; and a run of hard chunks
+        /// forces a breather, because unbroken pressure reads as noise rather than as difficulty.
+        /// </remarks>
+        private bool TryStartFormation(float rowDistance)
+        {
+            float climb = Mathf.Clamp01(rowDistance / DifficultyRampDistance);
+            float ceiling = Mathf.Lerp(OpeningDifficulty, 1f, climb);
+
+            // After a hard stretch, insist on something calm. The contrast is what makes the
+            // hard parts land.
+            if (_intensity > BreatherThreshold)
+            {
+                ceiling = Mathf.Min(ceiling, BreatherCeiling);
+            }
+
+            float floor = Mathf.Max(0f, ceiling - BandWidth);
+
+            FormationQuery query = new FormationQuery(
+                rowDistance, _state, floor, ceiling, _recent, _recentCount);
+
+            if (!_table.TryPickFormation(query, Roll(), out ObstacleFormation formation) ||
+                formation.RowCount == 0)
+            {
+                return false;
+            }
+
+            _activeFormation = formation;
+            _formationRow = 0;
+
+            // A rolling average rather than a counter, so one brutal chunk weighs as much as
+            // three middling ones.
+            _intensity = Mathf.Lerp(_intensity, formation.Difficulty, 0.5f);
+
+            if (formation.Exit != TrackState.Either)
+            {
+                _state = formation.Exit;
+            }
+
+            Remember(formation);
+            return true;
+        }
+
+        private void Remember(ObstacleFormation formation)
+        {
+            for (int i = Mathf.Min(_recentCount, RecentMemory - 1); i > 0; i--)
+            {
+                _recent[i] = _recent[i - 1];
+            }
+
+            _recent[0] = formation;
+            _recentCount = Mathf.Min(_recentCount + 1, RecentMemory);
         }
 
         private RowPlan NextFormationRow()

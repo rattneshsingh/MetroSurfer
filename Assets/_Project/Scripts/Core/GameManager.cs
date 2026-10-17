@@ -34,52 +34,13 @@ namespace Runner.Core
                  "tuning overrides are read here — nothing else in the codebase changes.")]
         [SerializeField] private StateConfig _state;
 
-        [Header("Scoring")]
-        [Tooltip("Score comes only from coins. Distance is still tracked, but it drives " +
-                 "difficulty rather than the scoreboard.")]
-        [SerializeField] private int _pointsPerCoin = 5;
-
-        [Tooltip("Extra multiplier per unit of height, applied when the coin is taken. Coins " +
-                 "sit on the roofs, so this is what makes the climb worth the risk.")]
-        [SerializeField] private float _multiplierPerHeightUnit = 0.6f;
-
-        [Header("Streak")]
-        [Tooltip("Coins needed to climb one multiplier tier.")]
-        [SerializeField] private int _coinsPerStreakTier = 8;
-        [SerializeField] private int _maxStreakMultiplier = 5;
-
-        [Tooltip("Metres without a coin before the streak resets. Distance, not seconds — a " +
-                 "timer would be far kinder early in a run than late.")]
-        [SerializeField] private float _streakBreakDistance = 60f;
+        [Tooltip("Scoring, chase and stumble values. Kept in an asset so Play-mode edits " +
+                 "survive pressing Stop. Leave empty to use the built-in defaults.")]
+        [SerializeField] private RunTuning _runTuning;
 
         [Header("Pursuit")]
         [SerializeField] private Pursuer _pursuer;
         [SerializeField] private CameraShake _cameraShake;
-
-        [Tooltip("Speed immediately after a stumble, as a fraction of normal. The dip is what " +
-                 "makes the pursuer's gain feel earned rather than arbitrary.")]
-        [SerializeField, Range(0.2f, 1f)] private float _stumbleSpeedMultiplier = 0.55f;
-
-        [Tooltip("How quickly that speed comes back, per second.")]
-        [SerializeField] private float _stumbleSpeedRecoveryPerSecond = 0.9f;
-
-        [Tooltip("Ground lost per stumble. At 0.34 it takes three to be caught.")]
-        [SerializeField] private float _stumbleCost = 0.34f;
-
-        [Tooltip("Ground regained per second while running on the street. Deliberately slow.")]
-        [SerializeField] private float _streetRecoveryPerSecond = 0.12f;
-
-        [Tooltip("Ground regained per second while up on the stack. He cannot follow you there, " +
-                 "so being chased is a reason to climb.")]
-        [SerializeField] private float _climbRecoveryPerSecond = 0.6f;
-
-        [Tooltip("Seconds of immunity after a stumble, so one obstacle cannot hit you twice " +
-                 "while it passes through you.")]
-        [SerializeField] private float _recoveryWindow = 0.7f;
-
-        [Header("Feel")]
-        [Tooltip("Beat between the hit landing and the game-over panel appearing.")]
-        [SerializeField] private float _deathFreezeDuration = 0.45f;
 
         [Header("Platform")]
         [SerializeField] private int _targetFrameRate = 60;
@@ -99,6 +60,21 @@ namespace Runner.Core
         public int Score => _scoring == null ? 0 : _scoring.Score;
         public int Multiplier => _scoring == null ? 1 : _scoring.Multiplier;
         public float PursuitDistance => _pursuit == null ? 1f : _pursuit.Distance;
+
+        /// <summary>Falls back to defaults so the scene runs without any asset wiring.</summary>
+        private RunTuning RunSettings
+        {
+            get
+            {
+                if (_runTuning == null)
+                {
+                    _runTuning = RunTuning.CreateDefault();
+                }
+
+                return _runTuning;
+            }
+        }
+
         public float Distance => _distance;
         public float Speed => _speed;
 
@@ -122,17 +98,17 @@ namespace Runner.Core
             if (_pursuit == null)
             {
                 _pursuit = new PursuitState(
-                    _stumbleCost, _streetRecoveryPerSecond, _climbRecoveryPerSecond);
+                    RunSettings.StumbleCost, RunSettings.StreetRecoveryPerSecond, RunSettings.ClimbRecoveryPerSecond);
             }
 
             if (_scoring == null)
             {
                 _scoring = new ScoreKeeper(
-                    _pointsPerCoin,
-                    _coinsPerStreakTier,
-                    _maxStreakMultiplier,
-                    _streakBreakDistance,
-                    _multiplierPerHeightUnit);
+                    RunSettings.PointsPerCoin,
+                    RunSettings.CoinsPerTier,
+                    RunSettings.MaxMultiplier,
+                    RunSettings.StreakBreakDistance,
+                    RunSettings.HeightBonusPerUnit);
             }
 
             if (_playerCollision == null && _player != null)
@@ -263,7 +239,7 @@ namespace Runner.Core
 
             // The dip decays back to full speed rather than snapping, so recovering from a
             // stumble is something you feel happening rather than a state that flips.
-            _speedPenalty = Mathf.Max(0f, _speedPenalty - _stumbleSpeedRecoveryPerSecond * dt);
+            _speedPenalty = Mathf.Max(0f, _speedPenalty - RunSettings.StumbleSpeedRecoveryPerSecond * dt);
 
             _speed = _difficulty.EvaluateSpeed(_distance) * (1f - _speedPenalty);
             _distance += _speed * dt;
@@ -361,8 +337,8 @@ namespace Runner.Core
             if (severity == HitSeverity.Glancing && !_pursuit.Stumble())
             {
                 _scoring.BreakStreak();
-                _rearmTimer = _recoveryWindow;
-                _speedPenalty = 1f - _stumbleSpeedMultiplier;
+                _rearmTimer = RunSettings.RecoveryWindow;
+                _speedPenalty = 1f - RunSettings.StumbleSpeedMultiplier;
 
                 if (_cameraShake != null)
                 {
@@ -389,7 +365,7 @@ namespace Runner.Core
             }
 
             _gameState = GameState.Dead;
-            _deathTimer = Mathf.Max(0.0001f, _deathFreezeDuration);
+            _deathTimer = Mathf.Max(0.0001f, RunSettings.DeathFreezeDuration);
 
             if (_player != null)
             {

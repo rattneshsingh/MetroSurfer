@@ -160,6 +160,8 @@ namespace Runner.Spawning
                 _catalog = ObstacleCatalog.CreateDefault();
             }
 
+            WarnIfTuningAssetsAreStale();
+
             _presentationRng = new System.Random(_seed);
             _generator = new TrackGenerator(_seed, _introSequence, obstacleTable, _catalog, _minRowGapAfterHardRow);
 
@@ -181,6 +183,36 @@ namespace Runner.Spawning
 
             _built = true;
             ResetRun();
+        }
+
+        /// <summary>
+        /// Shouts when an asset predates the defaults in code.
+        /// </summary>
+        /// <remarks>
+        /// An asset never adopts a new code default -- that is the point of it, and it is why
+        /// tuning survives. The cost is that changing a default silently does nothing to an asset
+        /// that already exists, which has cost this project several playtests spent wondering why
+        /// nothing changed. Better to be told.
+        /// </remarks>
+        private void WarnIfTuningAssetsAreStale()
+        {
+            if (_obstacleTable != null &&
+                _obstacleTable.DefaultsVersion != ObstacleTable.CurrentDefaultsVersion)
+            {
+                Debug.LogError(
+                    $"ObstacleTable.asset is version {_obstacleTable.DefaultsVersion}, code expects " +
+                    $"{ObstacleTable.CurrentDefaultsVersion}. It is running old chunks. " +
+                    "Run Runner > Reset Tuning Assets to Defaults.", this);
+            }
+
+            if (_introSequence != null &&
+                _introSequence.DefaultsVersion != IntroSequence.CurrentDefaultsVersion)
+            {
+                Debug.LogError(
+                    $"IntroSequence.asset is version {_introSequence.DefaultsVersion}, code expects " +
+                    $"{IntroSequence.CurrentDefaultsVersion}. It is running the old opening. " +
+                    "Run Runner > Reset Tuning Assets to Defaults.", this);
+            }
         }
 
         /// <summary>Rebuilds the whole track for a fresh run. No scene reload, no reallocation.</summary>

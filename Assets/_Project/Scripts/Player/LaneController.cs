@@ -9,92 +9,29 @@ namespace Runner.Player
     /// dial in; PhysX would only add variance and cost.
     /// </summary>
     /// <remarks>
-    /// Every value under the tuning headers is a [SerializeField] on purpose: feel is Phase 0's
-    /// only deliverable, and these want to be dragged while the game runs.
+    /// Every feel value lives on a PlayerTuning asset rather than on this component. Feel is
+    /// found by dragging numbers while the game runs, and Unity throws away Play-mode edits to
+    /// components while keeping them on assets — so on a component they would evaporate every
+    /// time you pressed Stop.
     /// </remarks>
     public sealed class LaneController : MonoBehaviour
     {
         public const int LaneCount = 3;
 
-        [Header("Lanes")]
+        [Tooltip("Every feel value lives here so Play-mode edits survive pressing Stop. " +
+                 "Leave empty to use the built-in defaults.")]
+        [SerializeField] private PlayerTuning _tuning;
+
+        [Header("Scene references")]
         [Tooltip("Overwritten by GameManager so the track and the player can never disagree.")]
         [SerializeField] private float _laneWidth = 2.2f;
-        [SerializeField, Range(0, LaneCount - 1)] private int _startLane = 1;
 
-        [Tooltip("Seconds to travel one lane. Lower is snappier.")]
-        [SerializeField] private float _laneSnapDuration = 0.14f;
-
-        [Tooltip("Eases the horizontal slide. Ends must sit at (0,0) and (1,1).")]
-        [SerializeField] private AnimationCurve _laneSnapEase = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-
-        [Header("Jump")]
-        [SerializeField] private float _jumpHeight = 1.5f;
-
-        [Tooltip("Seconds from take-off to apex. Together with height this defines gravity.")]
-        [SerializeField] private float _jumpRiseDuration = 0.45f;
-
-        [Tooltip("Gravity multiplier while descending. >1 kills the floaty feel.")]
-        [SerializeField] private float _fallGravityMultiplier = 1.5f;
-
-        [Tooltip("Grace period after leaving the ground where a jump still counts.")]
-        [SerializeField] private float _coyoteTime = 0.12f;
-
-        [Tooltip("A jump or slide pressed this long before it becomes legal still fires.")]
-        [SerializeField] private float _inputBufferWindow = 0.16f;
-
-        [Header("Roll (the slide input)")]
-        [SerializeField] private float _slideDuration = 0.6f;
-
-        [Tooltip("Sliding in mid-air slams the player down instead of being ignored.")]
-        [SerializeField] private bool _fastFallOnAirSlide = true;
-        [SerializeField] private float _fastFallSpeed = 18f;
-
-        [Tooltip("Jumping out of a slide cancels it.")]
-        [SerializeField] private bool _jumpCancelsSlide = true;
-
-        [Header("Hitbox — deliberately smaller than the visual mesh. Forgiving, never punishing.")]
         [SerializeField] private BoxCollider _hitbox;
-        [SerializeField] private Vector3 _standingHitboxCenter = new Vector3(0f, 0.5f, 0f);
-        [SerializeField] private Vector3 _standingHitboxSize = new Vector3(0.45f, 0.85f, 0.45f);
-        [SerializeField] private Vector3 _slidingHitboxCenter = new Vector3(0f, 0.22f, 0f);
-        [SerializeField] private Vector3 _slidingHitboxSize = new Vector3(0.45f, 0.35f, 0.45f);
-
-        [Header("Visual")]
         [SerializeField] private Transform _visual;
-        [SerializeField] private Vector3 _standingVisualScale = Vector3.one;
-        [SerializeField] private Vector3 _slidingVisualScale = new Vector3(0.9f, 0.9f, 0.9f);
+        [SerializeField] private PlayerInputReader _input;
 
-        [Tooltip("Forward rotations the visual makes during a roll. 0 disables the spin.")]
-        [SerializeField] private float _rollSpinTurns = 1f;
-        [SerializeField] private float _visualSquashSpeed = 18f;
-
-        [Header("Stumble reaction")]
-        [Tooltip("How long the player visibly loses composure after clipping something.")]
-        [SerializeField] private float _flinchDuration = 0.45f;
-
-        [Tooltip("Peak sideways tilt of the flinch, in degrees.")]
-        [SerializeField] private float _flinchTiltDegrees = 26f;
-
-        [Tooltip("How far the visual compresses at the moment of impact.")]
-        [SerializeField, Range(0.5f, 1f)] private float _flinchSquash = 0.82f;
-
-        [Header("Ground — the world is no longer flat")]
         [Tooltip("Layers the downward probe treats as standable. Resolved from 'Surface' if left empty.")]
         [SerializeField] private LayerMask _surfaceLayers;
-
-        [Tooltip("Probe starts this far above the feet, so a rising ramp is still found.")]
-        [SerializeField] private float _probeStartHeight = 0.6f;
-        [SerializeField] private float _probeDistance = 8f;
-
-        [Tooltip("Biggest step the player walks up rather than crashes into. Ramps must be " +
-                 "gentler than this per frame; a truck side must be steeper.")]
-        [SerializeField] private float _stepUpTolerance = 0.35f;
-
-        [Header("Safety")]
-        [Tooltip("Clamps a frame hitch so the player cannot tunnel through an obstacle.")]
-        [SerializeField] private float _maxDeltaTime = 0.05f;
-
-        [SerializeField] private PlayerInputReader _input;
 
         private Transform _transform;
 
@@ -127,7 +64,25 @@ namespace Runner.Player
         public float SupportHeight => _supportY;
 
         /// <summary>The jump arc as data, so coin trajectories can be derived from it.</summary>
-        public JumpProfile Jump => new JumpProfile(_jumpHeight, _jumpRiseDuration, _fallGravityMultiplier);
+        public JumpProfile Jump =>
+            new JumpProfile(Tuning.JumpHeight, Tuning.JumpRiseDuration, Tuning.FallGravityMultiplier);
+
+        /// <summary>
+        /// Falls back to defaults when nothing is assigned, so the player works in a bare scene
+        /// and in tests without any asset wiring.
+        /// </summary>
+        private PlayerTuning Tuning
+        {
+            get
+            {
+                if (_tuning == null)
+                {
+                    _tuning = PlayerTuning.CreateDefault();
+                }
+
+                return _tuning;
+            }
+        }
 
         public int CurrentLane => _targetLane;
 
@@ -138,11 +93,11 @@ namespace Runner.Player
         /// </summary>
         public void PlayStumble()
         {
-            _flinchTimer = _flinchDuration;
+            _flinchTimer = Tuning.FlinchDuration;
         }
 
         /// <summary>True while the horizontal snap is still running.</summary>
-        public bool IsChangingLanes => _laneTimer < _laneSnapDuration;
+        public bool IsChangingLanes => _laneTimer < Tuning.LaneSnapDuration;
 
         /// <summary>
         /// Seconds since the player last committed to a jump or a roll. Used to judge whether a
@@ -192,7 +147,7 @@ namespace Runner.Player
 
             // Clamped so a GC spike or a stalled frame cannot teleport the player through
             // a collider. Perf/robustness beats exactness here.
-            float dt = Mathf.Min(Time.deltaTime, _maxDeltaTime);
+            float dt = Mathf.Min(Time.deltaTime, Tuning.MaxDeltaTime);
 
             PlayerCommand command = _input != null ? _input.Poll() : PlayerCommand.None;
 
@@ -228,10 +183,10 @@ namespace Runner.Player
 
         public void ResetForRun()
         {
-            _targetLane = Mathf.Clamp(_startLane, 0, LaneCount - 1);
+            _targetLane = Mathf.Clamp(Tuning.StartLane, 0, LaneCount - 1);
             _x = LaneToX(_targetLane);
             _laneFromX = _x;
-            _laneTimer = _laneSnapDuration;
+            _laneTimer = Tuning.LaneSnapDuration;
 
             _y = 0f;
             _supportY = 0f;
@@ -250,7 +205,7 @@ namespace Runner.Player
 
             if (_visual != null)
             {
-                _visual.localScale = _standingVisualScale;
+                _visual.localScale = Tuning.StandingVisualScale;
                 _visual.localRotation = Quaternion.identity;
             }
 
@@ -309,31 +264,31 @@ namespace Runner.Player
         {
             float targetX = LaneToX(_targetLane);
 
-            if (_laneSnapDuration <= 0f)
+            if (Tuning.LaneSnapDuration <= 0f)
             {
                 _x = targetX;
                 return;
             }
 
-            if (_laneTimer >= _laneSnapDuration)
+            if (_laneTimer >= Tuning.LaneSnapDuration)
             {
                 _x = targetX;
                 return;
             }
 
             _laneTimer += dt;
-            float t = Mathf.Clamp01(_laneTimer / _laneSnapDuration);
-            _x = Mathf.LerpUnclamped(_laneFromX, targetX, _laneSnapEase.Evaluate(t));
+            float t = Mathf.Clamp01(_laneTimer / Tuning.LaneSnapDuration);
+            _x = Mathf.LerpUnclamped(_laneFromX, targetX, Tuning.LaneSnapEase.Evaluate(t));
         }
 
         private void TickVertical(float dt)
         {
-            bool jumpBuffered = Time.time - _jumpBufferedAt <= _inputBufferWindow;
-            bool canJump = !_jumpConsumed && (_isGrounded || _timeSinceGrounded <= _coyoteTime);
+            bool jumpBuffered = Time.time - _jumpBufferedAt <= Tuning.InputBufferWindow;
+            bool canJump = !_jumpConsumed && (_isGrounded || _timeSinceGrounded <= Tuning.CoyoteTime);
 
             if (jumpBuffered && canJump)
             {
-                if (_isSliding && _jumpCancelsSlide)
+                if (_isSliding && Tuning.JumpCancelsSlide)
                 {
                     EndSlide();
                 }
@@ -345,7 +300,7 @@ namespace Runner.Player
                 _jumpBufferedAt = float.NegativeInfinity;
             }
 
-            float gravity = _verticalVelocity < 0f ? _gravity * _fallGravityMultiplier : _gravity;
+            float gravity = _verticalVelocity < 0f ? _gravity * Tuning.FallGravityMultiplier : _gravity;
             _verticalVelocity -= gravity * dt;
             _y += _verticalVelocity * dt;
 
@@ -357,7 +312,7 @@ namespace Runner.Player
                 // Landing out of the air is always allowed — that is how you get onto a roof.
                 // Once grounded, only a gentle rise is walkable; anything steeper is a wall,
                 // and running into a wall is the lethal collider's business, not ours.
-                if (!_isGrounded || rise <= _stepUpTolerance)
+                if (!_isGrounded || rise <= Tuning.StepUpTolerance)
                 {
                     _y = _groundHeight;
                     _supportY = _groundHeight;
@@ -388,10 +343,10 @@ namespace Runner.Player
         /// </summary>
         private float ProbeGroundHeight()
         {
-            Vector3 origin = new Vector3(_x, _y + _probeStartHeight, _transform.position.z);
+            Vector3 origin = new Vector3(_x, _y + Tuning.ProbeStartHeight, _transform.position.z);
 
             if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit,
-                                _probeStartHeight + _probeDistance, _surfaceLayers,
+                                Tuning.ProbeStartHeight + Tuning.ProbeDistance, _surfaceLayers,
                                 QueryTriggerInteraction.Ignore))
             {
                 return hit.point.y;
@@ -402,7 +357,7 @@ namespace Runner.Player
 
         private void TickSlide(float dt)
         {
-            bool slideBuffered = Time.time - _slideBufferedAt <= _inputBufferWindow;
+            bool slideBuffered = Time.time - _slideBufferedAt <= Tuning.InputBufferWindow;
 
             if (slideBuffered && !_isSliding)
             {
@@ -411,10 +366,10 @@ namespace Runner.Player
                     StartSlide();
                     _slideBufferedAt = float.NegativeInfinity;
                 }
-                else if (_fastFallOnAirSlide && _verticalVelocity > -_fastFallSpeed)
+                else if (Tuning.FastFallOnAirSlide && _verticalVelocity > -Tuning.FastFallSpeed)
                 {
                     // Keep the buffer alive so the slide fires the instant we land.
-                    _verticalVelocity = -_fastFallSpeed;
+                    _verticalVelocity = -Tuning.FastFallSpeed;
                 }
             }
 
@@ -434,15 +389,15 @@ namespace Runner.Player
         {
             _lastActionTime = Time.time;
             _isSliding = true;
-            _slideTimer = _slideDuration;
-            ApplyHitbox(_slidingHitboxCenter, _slidingHitboxSize);
+            _slideTimer = Tuning.SlideDuration;
+            ApplyHitbox(Tuning.SlidingHitboxCenter, Tuning.SlidingHitboxSize);
         }
 
         private void EndSlide()
         {
             _isSliding = false;
             _slideTimer = 0f;
-            ApplyHitbox(_standingHitboxCenter, _standingHitboxSize);
+            ApplyHitbox(Tuning.StandingHitboxCenter, Tuning.StandingHitboxSize);
         }
 
         private void ApplyHitbox(Vector3 center, Vector3 size)
@@ -463,32 +418,32 @@ namespace Runner.Player
                 return;
             }
 
-            Vector3 target = _isSliding ? _slidingVisualScale : _standingVisualScale;
+            Vector3 target = _isSliding ? Tuning.SlidingVisualScale : Tuning.StandingVisualScale;
 
             // A squashed cube reads as ducking. Only actual rotation reads as a roll, and the
             // player needs to see which one they did to learn the timing.
             Quaternion rotation = Quaternion.identity;
 
-            if (_isSliding && _slideDuration > 0f && _rollSpinTurns != 0f)
+            if (_isSliding && Tuning.SlideDuration > 0f && Tuning.RollSpinTurns != 0f)
             {
-                float progress = 1f - Mathf.Clamp01(_slideTimer / _slideDuration);
-                rotation = Quaternion.Euler(progress * 360f * _rollSpinTurns, 0f, 0f);
+                float progress = 1f - Mathf.Clamp01(_slideTimer / Tuning.SlideDuration);
+                rotation = Quaternion.Euler(progress * 360f * Tuning.RollSpinTurns, 0f, 0f);
             }
 
-            if (_flinchTimer > 0f && _flinchDuration > 0f)
+            if (_flinchTimer > 0f && Tuning.FlinchDuration > 0f)
             {
                 _flinchTimer -= dt;
 
                 // A decaying wobble rather than a single tilt — one lean reads as a pose, a
                 // wobble reads as being knocked off balance.
-                float life = Mathf.Clamp01(_flinchTimer / _flinchDuration);
+                float life = Mathf.Clamp01(_flinchTimer / Tuning.FlinchDuration);
                 float wobble = Mathf.Sin(life * Mathf.PI * 3f) * life;
 
-                rotation *= Quaternion.Euler(0f, 0f, wobble * _flinchTiltDegrees);
-                target *= Mathf.Lerp(1f, _flinchSquash, life);
+                rotation *= Quaternion.Euler(0f, 0f, wobble * Tuning.FlinchTiltDegrees);
+                target *= Mathf.Lerp(1f, Tuning.FlinchSquash, life);
             }
 
-            _visual.localScale = Vector3.Lerp(_visual.localScale, target, 1f - Mathf.Exp(-_visualSquashSpeed * dt));
+            _visual.localScale = Vector3.Lerp(_visual.localScale, target, 1f - Mathf.Exp(-Tuning.VisualSquashSpeed * dt));
             _visual.localRotation = rotation;
         }
 
@@ -513,9 +468,9 @@ namespace Runner.Player
         /// </summary>
         private void RecalculateJumpConstants()
         {
-            float rise = Mathf.Max(0.01f, _jumpRiseDuration);
-            _gravity = 2f * _jumpHeight / (rise * rise);
-            _jumpVelocity = 2f * _jumpHeight / rise;
+            float rise = Mathf.Max(0.01f, Tuning.JumpRiseDuration);
+            _gravity = 2f * Tuning.JumpHeight / (rise * rise);
+            _jumpVelocity = 2f * Tuning.JumpHeight / rise;
         }
     }
 }

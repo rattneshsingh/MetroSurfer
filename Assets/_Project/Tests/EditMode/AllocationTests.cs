@@ -88,8 +88,11 @@ namespace Runner.Tests
         [Test]
         public void WeightedPatternPickDoesNotAllocate()
         {
+            ObstacleFormation[] recent = new ObstacleFormation[4];
+            FormationQuery query = new FormationQuery(500f, TrackState.Street, 0f, 1f, recent, 0);
+
             _table.TryPick(500f, 0.5f, out ObstaclePattern _);
-            _table.TryPickFormation(500f, 0.5f, out ObstacleFormation _);
+            _table.TryPickFormation(query, 0.5f, out ObstacleFormation _);
 
             Assert.That(() =>
             {
@@ -97,7 +100,7 @@ namespace Runner.Tests
                 {
                     float roll = i / 200f;
                     _table.TryPick(500f, roll, out ObstaclePattern _);
-                    _table.TryPickFormation(500f, roll, out ObstacleFormation _);
+                    _table.TryPickFormation(query, roll, out ObstacleFormation _);
                 }
             }, Is.Not.AllocatingGCMemory());
         }

@@ -32,6 +32,8 @@ namespace Runner.EditorTools
         private const string ObstacleTableAssetPath = ScriptableObjectFolder + "/ObstacleTable.asset";
         private const string IntroSequenceAssetPath = ScriptableObjectFolder + "/IntroSequence.asset";
         private const string CatalogAssetPath = ScriptableObjectFolder + "/ObstacleCatalog.asset";
+        private const string PlayerTuningAssetPath = ScriptableObjectFolder + "/PlayerTuning.asset";
+        private const string RunTuningAssetPath = ScriptableObjectFolder + "/RunTuning.asset";
 
         private const string PlayerLayerName = "Player";
         private const string ObstacleLayerName = "Obstacle";
@@ -72,10 +74,12 @@ namespace Runner.EditorTools
             ObstacleTable obstacleTable = LoadOrCreateAsset(ObstacleTableAssetPath, ObstacleTable.CreateDefault);
             IntroSequence introSequence = LoadOrCreateAsset(IntroSequenceAssetPath, IntroSequence.CreateDefault);
             ObstacleCatalog catalog = LoadOrCreateAsset(CatalogAssetPath, ObstacleCatalog.CreateDefault);
+            PlayerTuning playerTuning = LoadOrCreateAsset(PlayerTuningAssetPath, PlayerTuning.CreateDefault);
+            RunTuning runTuning = LoadOrCreateAsset(RunTuningAssetPath, RunTuning.CreateDefault);
 
             WireSpawner(spawner, introSequence, catalog);
-            WirePlayer(player, hitbox, visual, input);
-            WireGameManager(gameManager, player, spawner, input, hud, difficulty, obstacleTable, pursuer, cameraShake);
+            WirePlayer(player, hitbox, visual, input, playerTuning);
+            WireGameManager(gameManager, player, spawner, input, hud, difficulty, obstacleTable, pursuer, cameraShake, runTuning);
 
             SaveScene(scene);
 
@@ -84,7 +88,7 @@ namespace Runner.EditorTools
             Debug.Log(
                 "Phase 0 scene built at " + ScenePath + ".\n" +
                 "Press Play. A/D or arrows to switch lanes, W/Up/Space to jump, S/Down to slide, R to restart.\n" +
-                "Tune feel on the Player object; tune difficulty on the DifficultyCurve asset.");
+                "Tune feel on the PlayerTuning and RunTuning assets -- those survive pressing Stop.");
 
             WarnIfTextMeshProUnavailable();
 
@@ -408,12 +412,18 @@ namespace Runner.EditorTools
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void WirePlayer(LaneController player, BoxCollider hitbox, Transform visual, PlayerInputReader input)
+        private static void WirePlayer(
+            LaneController player,
+            BoxCollider hitbox,
+            Transform visual,
+            PlayerInputReader input,
+            PlayerTuning tuning)
         {
             SerializedObject serialized = new SerializedObject(player);
             SetReference(serialized, "_hitbox", hitbox);
             SetReference(serialized, "_visual", visual);
             SetReference(serialized, "_input", input);
+            SetReference(serialized, "_tuning", tuning);
 
             // The ground probe needs to know which layer counts as standable.
             int surfaceLayer = LayerMask.NameToLayer(SurfaceLayerName);
@@ -438,9 +448,11 @@ namespace Runner.EditorTools
             DifficultyCurve difficulty,
             ObstacleTable obstacleTable,
             Pursuer pursuer,
-            CameraShake cameraShake)
+            CameraShake cameraShake,
+            RunTuning runTuning)
         {
             SerializedObject serialized = new SerializedObject(gameManager);
+            SetReference(serialized, "_runTuning", runTuning);
             SetReference(serialized, "_pursuer", pursuer);
             SetReference(serialized, "_cameraShake", cameraShake);
             SetReference(serialized, "_player", player);

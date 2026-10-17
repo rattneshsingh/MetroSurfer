@@ -14,6 +14,14 @@ namespace Runner.Config
     [CreateAssetMenu(menuName = "Runner/Intro Sequence", fileName = "IntroSequence")]
     public sealed class IntroSequence : ScriptableObject
     {
+        /// <summary>Bumped whenever the built-in defaults change.</summary>
+        public const int CurrentDefaultsVersion = 2;
+
+        [HideInInspector]
+        [SerializeField] private int _defaultsVersion;
+
+        public int DefaultsVersion => _defaultsVersion;
+
         [SerializeField] private IntroRow[] _rows;
 
         public int Count => _rows == null ? 0 : _rows.Length;
@@ -33,54 +41,36 @@ namespace Runner.Config
 
         private void FillDefaults()
         {
+            // Twelve rows, about sixty metres, seven seconds. Long enough to name the three
+            // verbs once each, short enough that it is not most of a run.
+            //
+            // It used to be thirty-one rows: a settle, three lessons, a full recap and two climb
+            // sequences. That was a hundred and fifty-five metres of identical track at the front
+            // of every single attempt, which made every run feel like the same run. Climbing does
+            // not need teaching here -- the ramp chunks introduce it in play.
+            _defaultsVersion = CurrentDefaultsVersion;
+
             _rows = new[]
             {
-                // Settle. Let the player feel the speed and find the lanes before anything asks
-                // something of them.
-                Empty(false),
-                Empty(true),
                 Empty(false),
                 Empty(true),
 
-                // Lesson 1 — move. Middle lane blocked, both sides open.
+                // Move.
                 Blocked(0b010, ObstacleKind.Full),
                 Empty(true),
-                Empty(false),
 
-                // Lesson 2 — jump. Full width, low enough to clear.
+                // Jump.
                 Blocked(ObstaclePattern.AllLanesMask, ObstacleKind.Low),
                 Empty(true),
-                Empty(false),
 
-                // Lesson 3 — slide. Full width, overhead.
+                // Roll.
                 Blocked(ObstaclePattern.AllLanesMask, ObstacleKind.High),
                 Empty(true),
-                Empty(false),
 
-                // Recap, now with a direction forced each time.
-                Blocked(0b011, ObstacleKind.Full),
-                Empty(true),
-                Blocked(0b110, ObstacleKind.Full),
-                Empty(true),
-                Blocked(ObstaclePattern.AllLanesMask, ObstacleKind.Low),
-                Empty(true),
-                Blocked(ObstaclePattern.AllLanesMask, ObstacleKind.High),
-                Empty(true),
-                Empty(false),
-
-                // Lesson 4 — climb. The ramp butts straight onto the truck, so the first time
-                // you go up you do not have to do anything: it happens to you. Understanding
-                // comes after.
+                // One climb, so the stack is not a surprise later. It happens to you rather
+                // than being asked of you.
                 Blocked(0b010, ObstacleKind.Ramp),
                 Blocked(0b010, ObstacleKind.Truck),
-                Empty(true),
-                Empty(false),
-
-                // Now the same shape, but the roof is a stepping stone rather than a
-                // destination -- a train sits beyond reach of the street.
-                Blocked(0b010, ObstacleKind.Ramp),
-                Blocked(0b010, ObstacleKind.Truck),
-                Blocked(0b010, ObstacleKind.Train),
                 Empty(true),
                 Empty(false)
             };

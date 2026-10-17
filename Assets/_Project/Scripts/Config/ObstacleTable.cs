@@ -9,11 +9,21 @@ namespace Runner.Config
     [CreateAssetMenu(menuName = "Runner/Obstacle Table", fileName = "ObstacleTable")]
     public sealed class ObstacleTable : ScriptableObject
     {
+        /// <summary>Bumped whenever the built-in defaults change.</summary>
+        public const int CurrentDefaultsVersion = 2;
+
+        [HideInInspector]
+        [SerializeField] private int _defaultsVersion;
+
+        public int DefaultsVersion => _defaultsVersion;
+
         [SerializeField] private ObstaclePattern[] _patterns;
 
         [Header("Multi-row set-pieces")]
-        [Tooltip("Chance a row starts a formation instead of picking a single-row pattern.")]
-        [SerializeField, Range(0f, 1f)] private float _formationChance = 0.35f;
+        [Tooltip("Chance a row starts a formation instead of picking a single-row pattern. " +
+                 "Authored sequences should be what the player mostly meets; scattered single " +
+                 "rows are filler between them, not the substance.")]
+        [SerializeField, Range(0f, 1f)] private float _formationChance = 0.85f;
 
         [SerializeField] private ObstacleFormation[] _formations;
 
@@ -21,8 +31,27 @@ namespace Runner.Config
 
         public float FormationChance => _formationChance;
 
-        /// <summary>Weighted pick among formations unlocked at <paramref name="distance"/>.</summary>
-        public bool TryPickFormation(float distance, float roll01, out ObstacleFormation formation)
+        /// <summary>
+        /// Weighted pick among the chunks that fit right now: hard enough, easy enough, starting
+        /// where the player actually is, and not one of the last few handed out.
+        /// </summary>
+        /// <remarks>
+        /// Falls back rather than failing. If nothing matches the full query it relaxes the
+        /// difficulty band and the repeat rule before giving up, because an empty stretch of
+        /// track is a worse outcome than a chunk that is slightly too easy or recently seen.
+        /// </remarks>
+        public bool TryPickFormation(FormationQuery query, float roll01, out ObstacleFormation formation)
+        {
+            if (TryPickFiltered(query, roll01, strict: true, out formation))
+            {
+                return true;
+            }
+
+            return TryPickFiltered(query, roll01, strict: false, out formation);
+        }
+
+        private bool TryPickFiltered(
+            FormationQuery query, float roll01, bool strict, out ObstacleFormation formation)
         {
             formation = null;
 
@@ -34,7 +63,7 @@ namespace Runner.Config
             float totalWeight = 0f;
             for (int i = 0; i < _formations.Length; i++)
             {
-                if (IsFormationEligible(i, distance))
+                if (Fits(_formations[i], query, strict))
                 {
                     totalWeight += _formations[i].Weight;
                 }
@@ -48,7 +77,7 @@ namespace Runner.Config
             float target = roll01 * totalWeight;
             for (int i = 0; i < _formations.Length; i++)
             {
-                if (!IsFormationEligible(i, distance))
+                if (!Fits(_formations[i], query, strict))
                 {
                     continue;
                 }
@@ -63,7 +92,7 @@ namespace Runner.Config
 
             for (int i = _formations.Length - 1; i >= 0; i--)
             {
-                if (IsFormationEligible(i, distance))
+                if (Fits(_formations[i], query, strict))
                 {
                     formation = _formations[i];
                     return true;
@@ -73,13 +102,33 @@ namespace Runner.Config
             return false;
         }
 
-        private bool IsFormationEligible(int index, float distance)
+        private static bool Fits(ObstacleFormation formation, FormationQuery query, bool strict)
         {
-            ObstacleFormation formation = _formations[index];
-            return formation != null
-                   && formation.RowCount > 0
-                   && formation.Weight > 0f
-                   && distance >= formation.MinDistance;
+            if (formation == null || formation.RowCount == 0 || formation.Weight <= 0f)
+            {
+                return false;
+            }
+
+            if (query.Distance < formation.MinDistance)
+            {
+                return false;
+            }
+
+            // Entry compatibility is never relaxed. Difficulty and repeats can bend; starting a
+            // roof run while the player is on the road cannot.
+            if (!query.AcceptsEntry(formation.Entry))
+            {
+                return false;
+            }
+
+            if (!strict)
+            {
+                return formation.Difficulty <= query.MaxDifficulty;
+            }
+
+            return formation.Difficulty <= query.MaxDifficulty
+                   && formation.Difficulty >= query.MinDifficulty
+                   && !query.WasRecentlyUsed(formation);
         }
 
         /// <summary>
@@ -178,174 +227,224 @@ namespace Runner.Config
                 new ObstaclePattern { LaneMask = 0b110, Kind = ObstacleKind.Full, Weight = 0.5f, MinDistance = 250f }
             };
 
-            _formationChance = 0.35f;
+            _defaultsVersion = CurrentDefaultsVersion;
+            _formationChance = 0.9f;
+
+            // Chunks, not obstacles. Each one is a small designed experience with a shape: a
+            // demand, a beat to react in, and a resolution. Difficulty decides when it appears,
+            // Entry and Exit decide what it can follow and what can follow it.
             _formations = new[]
             {
-                Formation("Ramp to truck", 1.4f, 0f,
-                    Row(0b010, ObstacleKind.Ramp),
-                    Row(0b010, ObstacleKind.Truck),
+                // ---- Breathers. Low weight on purpose: the pacing rule forces one after a
+                // hard stretch, which is when a breather is worth having. Left at equal weight
+                // they simply crowd out the content.
+                Chunk("Open road", 0.45f, 0.05f, TrackState.Either, TrackState.Either,
+                    Clear(true), Clear(true), Clear(false)),
+
+                Chunk("Easy single", 0.5f, 0.10f, TrackState.Street, TrackState.Street,
+                    Clear(false), Row(0b010, ObstacleKind.Low), Clear(true)),
+
+                Chunk("Drift wide", 0.45f, 0.12f, TrackState.Street, TrackState.Street,
+                    Row(0b010, ObstacleKind.Full), Clear(true), Clear(false)),
+
+                // ---- Single verbs. The vocabulary, one word at a time. ----
+                Chunk("Jump it", 1.0f, 0.20f, TrackState.Street, TrackState.Street,
+                    Clear(false), Row(All, ObstacleKind.Low), Clear(true)),
+
+                Chunk("Roll it", 1.0f, 0.22f, TrackState.Street, TrackState.Street,
+                    Clear(false), Row(All, ObstacleKind.High), Clear(true)),
+
+                Chunk("Side step", 1.0f, 0.20f, TrackState.Street, TrackState.Street,
+                    Clear(false), Row(0b011, ObstacleKind.Full), Clear(true)),
+
+                // ---- Sequences. Two demands close enough to be one movement. ----
+                Chunk("Jump then roll", 1.1f, 0.40f, TrackState.Street, TrackState.Street,
+                    Clear(false),
+                    Row(All, ObstacleKind.Low),
+                    Row(All, ObstacleKind.High),
                     Clear(true)),
 
-                Formation("Ramp to truck, side lane", 1.2f, 0f,
-                    Row(0b001, ObstacleKind.Ramp),
-                    Row(0b001, ObstacleKind.Truck),
+                Chunk("Roll then jump", 1.1f, 0.42f, TrackState.Street, TrackState.Street,
+                    Clear(false),
+                    Row(All, ObstacleKind.High),
+                    Row(All, ObstacleKind.Low),
                     Clear(true)),
 
-                Formation("Ramp to truck, far lane", 1.2f, 0f,
-                    Row(0b100, ObstacleKind.Ramp),
-                    Row(0b100, ObstacleKind.Truck),
+                // Every row closes the lane you just moved into, so the whole chunk is one
+                // continuous weave rather than three separate decisions.
+                Chunk("Weave", 1.2f, 0.45f, TrackState.Street, TrackState.Street,
+                    Row(0b011, ObstacleKind.Full),
+                    Row(0b110, ObstacleKind.Full),
+                    Row(0b011, ObstacleKind.Full),
                     Clear(true)),
 
-                // The point of the whole stack: a roof you cross by jumping, not by riding.
-                Formation("Convoy", 1.2f, 90f,
-                    Row(0b010, ObstacleKind.Ramp),
-                    Row(0b010, ObstacleKind.Truck),
-                    Row(0b010, ObstacleKind.MovingTruck),
-                    Row(0b010, ObstacleKind.Truck),
+                Chunk("Weave, tight", 0.9f, 0.70f, TrackState.Street, TrackState.Street,
+                    Row(0b011, ObstacleKind.Full),
+                    Row(0b110, ObstacleKind.Full),
+                    Row(0b011, ObstacleKind.Full),
+                    Row(0b110, ObstacleKind.Full),
                     Clear(true)),
 
-                Formation("Split convoy", 1f, 140f,
-                    Row(0b001, ObstacleKind.Ramp),
-                    Row(0b001, ObstacleKind.Truck),
-                    Row(0b101, ObstacleKind.MovingTruck),
-                    Row(0b100, ObstacleKind.Truck),
+                Chunk("Dodge and jump", 1.1f, 0.50f, TrackState.Street, TrackState.Street,
+                    Row(0b100, ObstacleKind.Full),
+                    Row(All, ObstacleKind.Low),
                     Clear(true)),
 
-                Formation("Up to the train", 1f, 200f,
-                    Row(0b010, ObstacleKind.Ramp),
-                    Row(0b010, ObstacleKind.Truck),
-                    Row(0b010, ObstacleKind.Train),
-                    Clear(true),
-                    Clear(false)),
-
-                Formation("Moving traffic", 1.1f, 260f,
-                    Row(0b001, ObstacleKind.MovingTruck),
-                    Row(0b100, ObstacleKind.MovingTruck),
-                    Row(0b010, ObstacleKind.MovingTruck),
+                Chunk("Dodge and roll", 1.1f, 0.52f, TrackState.Street, TrackState.Street,
+                    Row(0b001, ObstacleKind.Full),
+                    Row(All, ObstacleKind.High),
                     Clear(true)),
 
-                // Every lane ramps up onto a roof. There is no ground route, so the whole
-                // stretch is run along the top and the coins are up there with you.
-                Formation("Rooftop run", 1.1f, 120f,
-                    Row(All, ObstacleKind.Ramp),
-                    RowCoins(All, ObstacleKind.Truck),
-                    RowCoins(All, ObstacleKind.Truck),
-                    RowCoins(All, ObstacleKind.Truck),
+                // ---- Corridors. One lane survives, and the coins are in it. ----
+                Chunk("Broken road, right", 1.0f, 0.35f, TrackState.Street, TrackState.Street,
+                    RowCoins(0b011, ObstacleKind.Pit),
+                    RowCoins(0b011, ObstacleKind.Pit),
                     Clear(true)),
 
-                Formation("Rooftop run, long", 0.8f, 260f,
-                    Row(All, ObstacleKind.Ramp),
-                    RowCoins(All, ObstacleKind.Truck),
-                    RowCoins(All, ObstacleKind.MovingTruck),
-                    RowCoins(All, ObstacleKind.Truck),
-                    RowCoins(All, ObstacleKind.Truck),
+                Chunk("Broken road, left", 1.0f, 0.35f, TrackState.Street, TrackState.Street,
+                    RowCoins(0b110, ObstacleKind.Pit),
+                    RowCoins(0b110, ObstacleKind.Pit),
                     Clear(true)),
 
-                // Something arrives faster than the world does. The clear row in front is the
-                // tell — without it there is no time to read the lane.
-                Formation("Oncoming", 1.2f, 150f,
+                Chunk("Broken road, crossing", 1.0f, 0.60f, TrackState.Street, TrackState.Street,
+                    RowCoins(0b011, ObstacleKind.Pit),
+                    RowCoins(0b011, ObstacleKind.Pit),
+                    RowCoins(0b110, ObstacleKind.Pit),
+                    RowCoins(0b110, ObstacleKind.Pit),
+                    Clear(true)),
+
+                // ---- Traffic. Things that move at you, or away from you. ----
+                Chunk("Oncoming", 1.1f, 0.45f, TrackState.Street, TrackState.Street,
                     Clear(false),
                     Row(0b010, ObstacleKind.OncomingTruck),
                     Clear(true)),
 
-                Formation("Oncoming pair", 0.9f, 300f,
+                Chunk("Oncoming pair", 0.9f, 0.72f, TrackState.Street, TrackState.Street,
                     Clear(false),
                     Row(0b001, ObstacleKind.OncomingTruck),
                     Row(0b100, ObstacleKind.OncomingTruck),
                     Clear(true)),
 
-                // Two lanes gone. The surviving lane is a corner one, so the read is simple
-                // even though the margin is not.
-                Formation("Broken road, right open", 1.1f, 100f,
-                    Row(0b011, ObstacleKind.Pit),
-                    Row(0b011, ObstacleKind.Pit),
-                    Clear(true)),
-
-                Formation("Broken road, left open", 1.1f, 100f,
-                    Row(0b110, ObstacleKind.Pit),
-                    Row(0b110, ObstacleKind.Pit),
-                    Clear(true)),
-
-                // The open lane switches sides mid-stretch.
-                // The counterweight to the whole stack. Height pays a multiplier and street
-                // obstacles cannot reach you up there, so without something that punishes
-                // altitude the correct play is to climb once and never come down.
-                //
-                // Two clear rows before every underpass are load-bearing, not decoration:
-                // that is the room a roof runner needs to fall to the street in time.
-                // The lane you judged safe stops being safe. A clear row in front is the read
-                // window; without it there is nothing to have decided early about.
-                Formation("Bus that stops", 1.1f, 200f,
+                Chunk("Bus that stops", 1.0f, 0.50f, TrackState.Street, TrackState.Street,
                     Clear(false),
                     Row(0b010, ObstacleKind.StoppingBus),
                     Clear(true)),
 
-                Formation("Bus in traffic", 0.9f, 300f,
-                    Clear(false),
-                    Row(0b001, ObstacleKind.StoppingBus),
-                    Row(0b100, ObstacleKind.MovingTruck),
-                    Clear(true)),
-
-                // Two lanes rolling, one of them lying about it.
-                Formation("Bus pair", 0.8f, 380f,
+                Chunk("Two buses", 0.8f, 0.75f, TrackState.Street, TrackState.Street,
                     Clear(false),
                     Row(0b101, ObstacleKind.StoppingBus),
                     Clear(true)),
 
-                // A real gap between two roofs, with coins tracing the jump across it. The arc
-                // is what turns a hazard into an invitation: same geometry, opposite read.
-                Formation("Gap jump", 1.3f, 170f,
+                // ---- Ways up. Street in, roof out. ----
+                Chunk("Ramp up", 1.4f, 0.25f, TrackState.Street, TrackState.Elevated,
                     Row(0b010, ObstacleKind.Ramp),
-                    RowCoins(0b010, ObstacleKind.Truck),
-                    ArcRow(ObstacleKind.Truck),
-                    RowCoins(0b010, ObstacleKind.Truck),
-                    Clear(true)),
+                    RowCoins(0b010, ObstacleKind.Truck)),
 
-                Formation("Double gap jump", 0.9f, 280f,
+                Chunk("Ramp up, left", 1.2f, 0.28f, TrackState.Street, TrackState.Elevated,
                     Row(0b001, ObstacleKind.Ramp),
-                    RowCoins(0b001, ObstacleKind.Truck),
-                    ArcRow(ObstacleKind.Truck),
-                    RowCoins(0b001, ObstacleKind.Truck),
-                    ArcRow(ObstacleKind.Truck),
-                    RowCoins(0b001, ObstacleKind.Truck),
-                    Clear(true)),
+                    RowCoins(0b001, ObstacleKind.Truck)),
 
-                Formation("Underpass", 1.1f, 130f,
+                Chunk("Ramp up, right", 1.2f, 0.28f, TrackState.Street, TrackState.Elevated,
+                    Row(0b100, ObstacleKind.Ramp),
+                    RowCoins(0b100, ObstacleKind.Truck)),
+
+                Chunk("Wall of ramps", 1.0f, 0.35f, TrackState.Street, TrackState.Elevated,
+                    Row(All, ObstacleKind.Ramp),
+                    RowCoins(All, ObstacleKind.Truck)),
+
+                // ---- Roof runs. Unreachable until something has taken you up. ----
+                Chunk("Rooftop run", 1.3f, 0.30f, TrackState.Elevated, TrackState.Elevated,
+                    RowCoins(All, ObstacleKind.Truck),
+                    RowCoins(All, ObstacleKind.Truck)),
+
+                Chunk("Gap jump", 1.3f, 0.50f, TrackState.Elevated, TrackState.Elevated,
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    ArcRow(ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck)),
+
+                Chunk("Double gap", 1.0f, 0.70f, TrackState.Elevated, TrackState.Elevated,
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    ArcRow(ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    ArcRow(ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck)),
+
+                Chunk("Shifting convoy", 1.1f, 0.60f, TrackState.Elevated, TrackState.Elevated,
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.MovingTruck),
+                    RowCoins(0b010, ObstacleKind.Truck)),
+
+                Chunk("Cross the roofs", 1.0f, 0.65f, TrackState.Elevated, TrackState.Elevated,
+                    RowCoins(0b001, ObstacleKind.Truck),
+                    RowCoins(0b011, ObstacleKind.Truck),
+                    RowCoins(0b110, ObstacleKind.Truck),
+                    RowCoins(0b100, ObstacleKind.Truck)),
+
+                Chunk("Up to the train", 1.0f, 0.55f, TrackState.Elevated, TrackState.Elevated,
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Train),
+                    Clear(false)),
+
+                // ---- Ways down. The counterweight to the whole stack. ----
+                // Two clear rows before an underpass is the room a roof runner needs to fall.
+                Chunk("Underpass", 1.4f, 0.45f, TrackState.Elevated, TrackState.Street,
                     Clear(false),
                     Clear(false),
                     Row(0b010, ObstacleKind.Underpass),
                     Clear(true)),
 
-                // The full loop in one set-piece: climb, get paid, get pushed back down.
-                Formation("Climb then underpass", 1.2f, 150f,
-                    Row(0b010, ObstacleKind.Ramp),
-                    RowCoins(0b010, ObstacleKind.Truck),
-                    RowCoins(0b010, ObstacleKind.Truck),
+                Chunk("Down and dodge", 0.7f, 0.85f, TrackState.Elevated, TrackState.Street,
                     Clear(false),
                     Clear(false),
                     Row(0b010, ObstacleKind.Underpass),
+                    Row(0b011, ObstacleKind.Full),
                     Clear(true)),
 
-                Formation("Rooftop run into underpass", 0.9f, 320f,
+                // The roofs simply run out. No underpass required.
+                Chunk("Roofs run out", 1.2f, 0.40f, TrackState.Elevated, TrackState.Street,
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    Clear(true),
+                    Clear(false)),
+
+                // ---- Late game. Only reachable once the band has climbed. ----
+                Chunk("Gauntlet", 0.8f, 0.90f, TrackState.Street, TrackState.Street,
+                    Row(0b011, ObstacleKind.Full),
+                    Row(All, ObstacleKind.Low),
+                    Row(0b110, ObstacleKind.Full),
+                    Row(All, ObstacleKind.High),
+                    Clear(true)),
+
+                Chunk("Traffic jam", 0.8f, 0.88f, TrackState.Street, TrackState.Street,
+                    Row(0b001, ObstacleKind.StoppingBus),
+                    Row(0b100, ObstacleKind.OncomingTruck),
+                    Row(0b010, ObstacleKind.Full),
+                    Clear(true)),
+
+                // The full loop in one piece: climb, get paid, get pushed back down.
+                Chunk("High road", 0.7f, 0.92f, TrackState.Street, TrackState.Street,
                     Row(All, ObstacleKind.Ramp),
                     RowCoins(All, ObstacleKind.Truck),
+                    ArcRow(ObstacleKind.Truck),
                     RowCoins(All, ObstacleKind.Truck),
                     Clear(false),
                     Clear(false),
                     Row(0b010, ObstacleKind.Underpass),
-                    Clear(true)),
-
-                Formation("Broken road, crossing", 1f, 240f,
-                    Row(0b011, ObstacleKind.Pit),
-                    Row(0b011, ObstacleKind.Pit),
-                    Row(0b110, ObstacleKind.Pit),
-                    Row(0b110, ObstacleKind.Pit),
                     Clear(true))
             };
         }
 
-        private static ObstacleFormation Formation(string name, float weight, float minDistance, params IntroRow[] rows)
-            => new ObstacleFormation { Name = name, Rows = rows, Weight = weight, MinDistance = minDistance };
+        private static ObstacleFormation Chunk(
+            string name, float weight, float difficulty,
+            TrackState entry, TrackState exit, params IntroRow[] rows)
+            => new ObstacleFormation
+            {
+                Name = name,
+                Rows = rows,
+                Weight = weight,
+                Difficulty = difficulty,
+                Entry = entry,
+                Exit = exit
+            };
 
         private const int All = ObstaclePattern.AllLanesMask;
 

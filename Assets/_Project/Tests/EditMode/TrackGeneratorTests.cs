@@ -313,6 +313,81 @@ namespace Runner.Tests
             Assert.Greater(busesChecked, 5, "No stopping buses were generated, so the test proves nothing.");
         }
 
+        /// <summary>
+        /// The state machine, checked from the outside. A roof can only appear where the player
+        /// could actually be standing on one — directly after another roof, after a ramp, or
+        /// across a gap that a roof-to-roof jump spans. Anything else is a platform floating in
+        /// mid-air that the player has no way to reach.
+        /// </summary>
+        [Test]
+        public void RoofsOnlyAppearWhereThePlayerCouldReachThem()
+        {
+            TrackGenerator generator = NewGenerator();
+            RowPlan previous = default;
+            int roofsChecked = 0;
+
+            for (int row = 0; row < Rows; row++)
+            {
+                RowPlan plan = generator.NextRow(row * RowSpacing, density: 0.9f, coinChance: 0.4f);
+
+                if (plan.HasObstacles && _catalog.IsLandable(plan.Kind))
+                {
+                    bool reachable =
+                        previous.CoinArc ||
+                        (previous.HasObstacles &&
+                         (_catalog.IsLandable(previous.Kind) || previous.Kind == ObstacleKind.Ramp));
+
+                    if (roofsChecked > 0)
+                    {
+                        Assert.IsTrue(reachable,
+                            $"Row {row}: a {plan.Kind} follows {(previous.HasObstacles ? previous.Kind.ToString() : "empty road")}, " +
+                            "so there is no way up onto it.");
+                    }
+
+                    roofsChecked++;
+                }
+
+                previous = plan;
+            }
+
+            Assert.Greater(roofsChecked, 20, "Barely any roofs were generated, so the stack is not being used.");
+        }
+
+        /// <summary>
+        /// Difficulty has to be gated by distance, or the opening kills people who have not yet
+        /// learnt the controls.
+        /// </summary>
+        [Test]
+        public void TheOpeningStretchStaysGentle()
+        {
+            TrackGenerator generator = NewGenerator();
+
+            int obstacleRows = 0;
+            int denseRows = 0;
+
+            // Roughly the first 200m, past the scripted intro.
+            for (int row = 0; row < 40 + _intro.Count; row++)
+            {
+                RowPlan plan = generator.NextRow(row * RowSpacing, density: 0.9f, coinChance: 0.4f);
+
+                if (!plan.HasObstacles)
+                {
+                    continue;
+                }
+
+                obstacleRows++;
+
+                // Three lanes closed at once is the shape of a demanding row.
+                if (plan.LaneMask == TrackGenerator.AllLanesMask)
+                {
+                    denseRows++;
+                }
+            }
+
+            Assert.Greater(obstacleRows, 0, "The opening was completely empty.");
+            Assert.Less(denseRows, obstacleRows, "Every obstacle row in the opening was full width.");
+        }
+
         /// <summary>Same seed, same run. Tuning against a moving target is impossible.</summary>
         [Test]
         public void GenerationIsDeterministicForASeed()

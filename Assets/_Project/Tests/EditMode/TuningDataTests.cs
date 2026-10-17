@@ -70,19 +70,26 @@ namespace Runner.Tests
             }
         }
 
+        private FormationQuery Query(
+            float distance = 5000f,
+            TrackState state = TrackState.Street,
+            float min = 0f,
+            float max = 1f)
+            => new FormationQuery(distance, state, min, max, new ObstacleFormation[4], 0);
+
         [Test]
-        public void EveryFormationRowIsSurvivable()
+        public void EveryChunkRowIsSurvivable()
         {
             for (int i = 0; i < 500; i++)
             {
-                if (!_table.TryPickFormation(5000f, i / 500f, out ObstacleFormation formation))
+                if (!_table.TryPickFormation(Query(), i / 500f, out ObstacleFormation chunk))
                 {
                     continue;
                 }
 
-                for (int row = 0; row < formation.RowCount; row++)
+                for (int row = 0; row < chunk.RowCount; row++)
                 {
-                    IntroRow entry = formation.Rows[row];
+                    IntroRow entry = chunk.Rows[row];
 
                     if (!_catalog.ClosesLane(entry.Kind))
                     {
@@ -90,9 +97,116 @@ namespace Runner.Tests
                     }
 
                     Assert.AreNotEqual(ObstaclePattern.AllLanesMask, entry.LaneMask,
-                        $"Formation '{formation.Name}' row {row} closes every lane with {entry.Kind}.");
+                        $"Chunk '{chunk.Name}' row {row} closes every lane with {entry.Kind}.");
                 }
             }
+        }
+
+        /// <summary>
+        /// A roof run cannot begin on the road, and a street chunk cannot begin in mid-air. This
+        /// is the rule that keeps the generator from stitching nonsense together.
+        /// </summary>
+        [Test]
+        public void SelectionNeverReturnsAChunkThatCannotBeEntered()
+        {
+            foreach (TrackState state in new[] { TrackState.Street, TrackState.Elevated })
+            {
+                for (int i = 0; i < 300; i++)
+                {
+                    if (!_table.TryPickFormation(Query(state: state), i / 300f, out ObstacleFormation chunk))
+                    {
+                        continue;
+                    }
+
+                    Assert.IsTrue(
+                        chunk.Entry == TrackState.Either || chunk.Entry == state,
+                        $"Chunk '{chunk.Name}' wants to start {chunk.Entry} but the player is {state}.");
+                }
+            }
+        }
+
+        /// <summary>Nothing brutal in the opening seconds, whatever the dice say.</summary>
+        [Test]
+        public void TheOpeningIsNeverHard()
+        {
+            const float OpeningCeiling = 0.3f;
+
+            for (int i = 0; i < 300; i++)
+            {
+                if (!_table.TryPickFormation(Query(distance: 0f, max: OpeningCeiling), i / 300f,
+                        out ObstacleFormation chunk))
+                {
+                    continue;
+                }
+
+                Assert.LessOrEqual(chunk.Difficulty, OpeningCeiling,
+                    $"Chunk '{chunk.Name}' at difficulty {chunk.Difficulty} appeared in the opening.");
+            }
+        }
+
+        /// <summary>Repeating a chunk back to back is the fastest way to make a level read as generated.</summary>
+        [Test]
+        public void SelectionAvoidsChunksItJustUsed()
+        {
+            ObstacleFormation[] recent = new ObstacleFormation[4];
+
+            Assert.IsTrue(_table.TryPickFormation(Query(), 0.5f, out ObstacleFormation first));
+            recent[0] = first;
+
+            FormationQuery avoiding = new FormationQuery(
+                5000f, TrackState.Street, 0f, 1f, recent, 1);
+
+            int differed = 0;
+            for (int i = 0; i < 50; i++)
+            {
+                if (_table.TryPickFormation(avoiding, i / 50f, out ObstacleFormation next) &&
+                    !ReferenceEquals(next, first))
+                {
+                    differed++;
+                }
+            }
+
+            Assert.Greater(differed, 40, "Selection kept handing back the chunk it was told to avoid.");
+        }
+
+        /// <summary>
+        /// Both halves of the stack have to exist. Without a way up the roofs are unreachable;
+        /// without a way down the player parks up there and the street stops mattering.
+        /// </summary>
+        [Test]
+        public void ThereAreChunksThatClimbAndChunksThatDescend()
+        {
+            int climbs = 0;
+            int descents = 0;
+            int roofRuns = 0;
+
+            for (int i = 0; i < 800; i++)
+            {
+                foreach (TrackState state in new[] { TrackState.Street, TrackState.Elevated })
+                {
+                    if (!_table.TryPickFormation(Query(state: state), i / 800f, out ObstacleFormation chunk))
+                    {
+                        continue;
+                    }
+
+                    if (chunk.Entry == TrackState.Street && chunk.Exit == TrackState.Elevated)
+                    {
+                        climbs++;
+                    }
+                    else if (chunk.Entry == TrackState.Elevated && chunk.Exit == TrackState.Street)
+                    {
+                        descents++;
+                    }
+                    else if (chunk.Entry == TrackState.Elevated && chunk.Exit == TrackState.Elevated)
+                    {
+                        roofRuns++;
+                    }
+                }
+            }
+
+            Assert.Greater(climbs, 0, "No chunk ever takes the player up.");
+            Assert.Greater(descents, 0, "No chunk ever brings the player down.");
+            Assert.Greater(roofRuns, 0, "Nothing happens once the player is up there.");
         }
 
         [Test]
