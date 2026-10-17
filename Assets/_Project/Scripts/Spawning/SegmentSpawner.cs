@@ -121,6 +121,7 @@ namespace Runner.Spawning
         private ObstacleFactory _obstacles;
         private CoinPlacer _coins;
         private StateConfig _stateConfig;
+        private SceneryBuilder _scenery;
 
         private Material _groundMaterial;
 
@@ -181,6 +182,12 @@ namespace Runner.Spawning
 
             _groundMaterial = PrimitiveFactory.CreateSharedMaterial(_groundColor, "M_Ground");
             BuildCollaborators();
+
+            // Optional: a state without scenery keeps the bare Phase 0 track.
+            _scenery = _stateConfig != null && _stateConfig.HasScenery
+                ? new SceneryBuilder(_stateConfig, FloorWidth * 0.5f, _segmentLength, _presentationRng, gameObject.layer)
+                : null;
+
             BuildSegmentRing();
 
             _built = true;
@@ -267,6 +274,9 @@ namespace Runner.Spawning
             }
 
             _obstacles.TickDrift(deltaTime);
+
+            // Game time, so the coins freeze with everything else on pause.
+            _coins.Spin(Time.time);
             CullPassedObstacles();
 
             // At most one segment passes the despawn line per frame at any sane speed, but loop
@@ -532,10 +542,9 @@ namespace Runner.Spawning
             GameObject root = PrimitiveFactory.CreateKinematicRoot($"Segment_{index}");
             root.transform.SetParent(_segmentRoot, false);
 
-            float floorWidth = _laneWidth * LaneCount + _trackSidePadding * 2f;
             GameObject floor = PrimitiveFactory.CreateCube(
                 "Floor",
-                new Vector3(floorWidth, _floorThickness, _segmentLength),
+                new Vector3(FloorWidth, _floorThickness, _segmentLength),
                 _groundMaterial,
                 root.layer,
                 PrimitiveFactory.ColliderMode.None,
@@ -546,8 +555,13 @@ namespace Runner.Spawning
             floor.transform.SetParent(root.transform, false);
             floor.transform.localPosition = new Vector3(0f, -_floorThickness * 0.5f, _segmentLength * 0.5f);
 
+            _scenery?.Dress(root.transform);
+
             return root.AddComponent<Segment>();
         }
+
+        /// <summary>Road surface width: the lanes plus padding on each side.</summary>
+        private float FloorWidth => _laneWidth * LaneCount + _trackSidePadding * 2f;
 
     }
 }

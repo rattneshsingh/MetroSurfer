@@ -29,6 +29,20 @@ namespace Runner.Spawning
         private readonly Material _pitMaterial;
         private readonly Material _brakeMaterial;
 
+        /// <summary>One shared material per painted kind, made the first time that kind is built.</summary>
+        private readonly Material[] _paintMaterials = new Material[KindCount];
+
+        /// <summary>Striped road-works border around a pit, so a dark patch reads as a hole.</summary>
+        private readonly Material _pitRimMaterial;
+
+        private static readonly Color PitRimColor = new Color(0.95f, 0.55f, 0.15f);
+
+        /// <summary>Width and height of the pit's border, in metres. Low enough never to read as a step.</summary>
+        private const float PitRimWidth = 0.18f;
+        private const float PitRimHeight = 0.06f;
+
+        private static Texture2D _hazardStripes;
+
         public ObstacleFactory(
             ObstacleCatalog catalog,
             Transform poolRoot,
@@ -47,6 +61,9 @@ namespace Runner.Spawning
             _obstacleMaterial = PrimitiveFactory.CreateSharedMaterial(settings.ObstacleColor, "M_Obstacle");
             _pitMaterial = PrimitiveFactory.CreateSharedMaterial(settings.PitColor, "M_Pit");
             _brakeMaterial = PrimitiveFactory.CreateSharedMaterial(settings.BrakeColor, "M_Brake");
+
+            _pitRimMaterial = PrimitiveFactory.CreateSharedMaterial(PitRimColor, "M_PitRim");
+            _pitRimMaterial.mainTexture = HazardStripes;
 
             _poolsByKind = new ObjectPool<Obstacle>[KindCount];
             BuildPools();
@@ -95,6 +112,13 @@ namespace Runner.Spawning
             ObjectUtility.Destroy(_obstacleMaterial);
             ObjectUtility.Destroy(_pitMaterial);
             ObjectUtility.Destroy(_brakeMaterial);
+            ObjectUtility.Destroy(_pitRimMaterial);
+
+            for (int i = 0; i < _paintMaterials.Length; i++)
+            {
+                ObjectUtility.Destroy(_paintMaterials[i]);
+                _paintMaterials[i] = null;
+            }
         }
 
         private ObjectPool<Obstacle> PoolFor(ObstacleKind kind)
@@ -190,10 +214,14 @@ namespace Runner.Spawning
                 }
 
                 // A state's model replaces only what is drawn. The generated physics stays.
-                GameObject art = _state != null ? _state.VisualFor(definition.Kind) : null;
-                if (art != null)
+                ObstacleArt art = _state != null ? _state.ArtFor(definition.Kind) : null;
+                if (art != null && art.Visual != null)
                 {
-                    ObstacleArtFitter.Dress(obstacle.gameObject, definition, art);
+                    ObstacleArtFitter.Dress(obstacle.gameObject, definition, art.Visual, art.Yaw);
+                }
+                else if (art != null && art.UsePaint)
+                {
+                    Repaint(obstacle.gameObject, PaintFor(definition.Kind, art));
                 }
             }
 
@@ -330,8 +358,36 @@ namespace Runner.Spawning
             slab.transform.localPosition = new Vector3(
                 0f, definition.BaseHeight + definition.Size.y * 0.5f, 0f);
 
+            AddPitRim(root, definition);
             AddLethalVolume(root, definition);
             return root.AddComponent<Obstacle>();
+        }
+
+        /// <summary>
+        /// Four striped kerbs just inside the pit's edge. Visual only — no colliders — and kept
+        /// inside the footprint so the pit's size on screen is still its size in play.
+        /// </summary>
+        private void AddPitRim(GameObject root, ObstacleDefinition definition)
+        {
+            Vector3 size = definition.Size;
+            float y = definition.BaseHeight + size.y + PitRimHeight * 0.5f;
+            float halfX = size.x * 0.5f - PitRimWidth * 0.5f;
+            float halfZ = size.z * 0.5f - PitRimWidth * 0.5f;
+
+            AddRimPiece(root, "RimLeft", new Vector3(PitRimWidth, PitRimHeight, size.z), new Vector3(-halfX, y, 0f));
+            AddRimPiece(root, "RimRight", new Vector3(PitRimWidth, PitRimHeight, size.z), new Vector3(halfX, y, 0f));
+            AddRimPiece(root, "RimNear", new Vector3(size.x, PitRimHeight, PitRimWidth), new Vector3(0f, y, -halfZ));
+            AddRimPiece(root, "RimFar", new Vector3(size.x, PitRimHeight, PitRimWidth), new Vector3(0f, y, halfZ));
+        }
+
+        private void AddRimPiece(GameObject root, string name, Vector3 size, Vector3 localPosition)
+        {
+            GameObject piece = PrimitiveFactory.CreateCube(
+                name, size, _pitRimMaterial, root.layer,
+                PrimitiveFactory.ColliderMode.None, castShadows: false);
+
+            piece.transform.SetParent(root.transform, false);
+            piece.transform.localPosition = localPosition;
         }
 
         /// <summary>The kill volume, whose bounds the definition works out per form.</summary>
@@ -352,6 +408,73 @@ namespace Runner.Spawning
 
         private Material MaterialFor(ObstacleTint tint) =>
             tint == ObstacleTint.Pit ? _pitMaterial : _obstacleMaterial;
+
+        /// <summary>Shared per kind, so every painted instance of a kind batches together.</summary>
+        private Material PaintFor(ObstacleKind kind, ObstacleArt art)
+        {
+            int index = (int)kind;
+            if (_paintMaterials[index] == null)
+            {
+                Material material = PrimitiveFactory.CreateSharedMaterial(art.Paint, "M_Paint_" + kind);
+                if (art.HazardStripes)
+                {
+                    material.mainTexture = HazardStripes;
+                }
+
+                _paintMaterials[index] = material;
+            }
+
+            return _paintMaterials[index];
+        }
+
+        private static void Repaint(GameObject obstacle, Material material)
+        {
+            Renderer[] renderers = obstacle.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                renderers[i].sharedMaterial = material;
+            }
+        }
+
+        /// <summary>
+        /// Diagonal light and dark bands, generated once. The material colour tints the light
+        /// bands, so one texture serves any hazard colour. Seamless when tiled, because the band
+        /// pattern repeats an even number of times across the texture.
+        /// </summary>
+        private static Texture2D HazardStripes
+        {
+            get
+            {
+                if (_hazardStripes != null)
+                {
+                    return _hazardStripes;
+                }
+
+                const int size = 32;
+                const int band = 8;
+                Color32 light = new Color32(255, 255, 255, 255);
+                Color32 dark = new Color32(38, 38, 40, 255);
+
+                Color32[] pixels = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                {
+                    for (int x = 0; x < size; x++)
+                    {
+                        pixels[y * size + x] = ((x + y) / band) % 2 == 0 ? light : dark;
+                    }
+                }
+
+                _hazardStripes = new Texture2D(size, size, TextureFormat.RGBA32, false)
+                {
+                    name = "HazardStripes",
+                    wrapMode = TextureWrapMode.Repeat,
+                    filterMode = FilterMode.Bilinear
+                };
+                _hazardStripes.SetPixels32(pixels);
+                _hazardStripes.Apply(false, true);
+                return _hazardStripes;
+            }
+        }
 
         /// <summary>
         /// Drift is applied by mode, so the parameters stay shared across kinds rather than

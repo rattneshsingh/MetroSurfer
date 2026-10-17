@@ -89,6 +89,7 @@ namespace Runner.Core
             Time.timeScale = 1f;
 
             EnsureInitialized();
+            ApplyAtmosphere();
         }
 
         /// <summary>
@@ -187,6 +188,12 @@ namespace Runner.Core
                 case GameState.Paused:
                     TickPaused();
                     break;
+            }
+
+            // Every state, so a restart eases the camera back to the centre lane too.
+            if (_cameraShake != null && _player != null)
+            {
+                _cameraShake.Follow(_player.LaneX);
             }
         }
 
@@ -504,6 +511,26 @@ namespace Runner.Core
                 _hud.SetScore(_scoring.Score);
                 _hud.SetCoins(_coins);
                 _hud.SetMultiplier(_scoring.Multiplier);
+            }
+        }
+
+        /// <summary>
+        /// The state's sky colours the camera background and the fog alike, so distant scenery
+        /// dissolves into the horizon instead of ending at a visible seam. Startup only.
+        /// </summary>
+        private void ApplyAtmosphere()
+        {
+            if (_state == null)
+            {
+                return;
+            }
+
+            RenderSettings.fogColor = _state.SkyColor;
+
+            Camera view = Camera.main;
+            if (view != null)
+            {
+                view.backgroundColor = _state.SkyColor;
             }
         }
 

@@ -20,7 +20,10 @@ namespace Runner.Spawning
         public void Initialize(int value)
         {
             _value = value;
-            _renderer = GetComponent<Renderer>();
+
+            // The trigger sits on the root, where PlayerCollision looks for it; the visible disc
+            // is a child so it can spin without turning the trigger box with it.
+            _renderer = GetComponentInChildren<Renderer>();
             _collider = GetComponent<Collider>();
         }
 

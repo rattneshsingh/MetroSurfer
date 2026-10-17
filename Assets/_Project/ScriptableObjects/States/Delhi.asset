@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: Delhi
   m_EditorClassIdentifier: Runner::Runner.Config.StateConfig
   _displayName: Delhi
-  _groundColor: {r: 0.32, g: 0.32, b: 0.34, a: 1}
+  _groundColor: {r: 0.2, g: 0.2, b: 0.22, a: 1}
   _obstacleColor: {r: 0.18, g: 0.18, b: 0.2, a: 1}
   _coinColor: {r: 0.95, g: 0.78, b: 0.25, a: 1}
-  _skyColor: {r: 0.45, g: 0.52, b: 0.6, a: 1}
+  _skyColor: {r: 0.86, g: 0.74, b: 0.58, a: 1}
   _propSetAddresses: []
   _skylineSetAddress: 
   _landmarkAddress: 
@@ -26,13 +26,92 @@ MonoBehaviour:
   _obstacleArt:
   - Kind: 5
     Visual: {fileID: 919132149155446097, guid: 0fdbaf8ff2592d94bbd85f1855b9978d, type: 3}
+    Yaw: 0
+    UsePaint: 0
+    Paint: {r: 0, g: 0, b: 0, a: 0}
+    HazardStripes: 0
   - Kind: 4
-    Visual: {fileID: 919132149155446097, guid: 92fde9f4855e93c4a9e0e64beef8fbac, type: 3}
+    Visual: {fileID: 919132149155446097, guid: c7350bb96c07f2c4396aac6838303f40, type: 3}
+    Yaw: 0
+    UsePaint: 0
+    Paint: {r: 0, g: 0, b: 0, a: 0}
+    HazardStripes: 0
   - Kind: 6
-    Visual: {fileID: 919132149155446097, guid: 40368932e1ec60a46879ff9d2f30c5bd, type: 3}
+    Visual: {fileID: 919132149155446097, guid: 666535cb8fd4f9b468d5d5f0099aa031, type: 3}
+    Yaw: 0
+    UsePaint: 0
+    Paint: {r: 0, g: 0, b: 0, a: 0}
+    HazardStripes: 0
   - Kind: 7
-    Visual: {fileID: 919132149155446097, guid: 88c5dc58d08b8524483dc757badb99c5, type: 3}
+    Visual: {fileID: 919132149155446097, guid: 7ded3377c8e53f945afdf7572af06ccc, type: 3}
+    Yaw: 180
+    UsePaint: 0
+    Paint: {r: 0, g: 0, b: 0, a: 0}
+    HazardStripes: 0
   - Kind: 10
-    Visual: {fileID: 919132149155446097, guid: 368d2b9be062d744d8cbfeba35e3c227, type: 3}
+    Visual: {fileID: 919132149155446097, guid: aedb830a1c8020249830898aae4425f6, type: 3}
+    Yaw: 0
+    UsePaint: 0
+    Paint: {r: 0, g: 0, b: 0, a: 0}
+    HazardStripes: 0
+  - Kind: 0
+    Visual: {fileID: 919132149155446097, guid: 0d521740d74e0d640b17b10f72d15f51, type: 3}
+    Yaw: 0
+    UsePaint: 0
+    Paint: {r: 0, g: 0, b: 0, a: 0}
+    HazardStripes: 0
+  - Kind: 2
+    Visual: {fileID: 919132149155446097, guid: d6fbce78cc9b8684297d620543f4102e, type: 3}
+    Yaw: 0
+    UsePaint: 0
+    Paint: {r: 0, g: 0, b: 0, a: 0}
+    HazardStripes: 0
+  - Kind: 1
+    Visual: {fileID: 0}
+    Yaw: 0
+    UsePaint: 1
+    Paint: {r: 1, g: 0.8, b: 0.12, a: 1}
+    HazardStripes: 1
+  - Kind: 9
+    Visual: {fileID: 0}
+    Yaw: 0
+    UsePaint: 1
+    Paint: {r: 0.95, g: 0.55, b: 0.15, a: 1}
+    HazardStripes: 1
+  - Kind: 3
+    Visual: {fileID: 0}
+    Yaw: 0
+    UsePaint: 1
+    Paint: {r: 0.66, g: 0.3, b: 0.22, a: 1}
+    HazardStripes: 0
+  _buildings:
+  - {fileID: 919132149155446097, guid: f7692bbd5cda7f44ea112cbb4374b9f8, type: 3}
+  - {fileID: 919132149155446097, guid: 4580686494d602840b379f6d2d811a2e, type: 3}
+  - {fileID: 919132149155446097, guid: a28b17865e4946b42b10afdc480f8980, type: 3}
+  - {fileID: 919132149155446097, guid: 88ca2f25cc7dfcd4f8319d4d9e36262d, type: 3}
+  - {fileID: 919132149155446097, guid: 1448dea6b13249248aed6842e91f6640, type: 3}
+  - {fileID: 919132149155446097, guid: 640a6db452f7c6548a138795806c9818, type: 3}
+  - {fileID: 919132149155446097, guid: 97fe6aea929d357438f26f44e5f03b02, type: 3}
+  - {fileID: 919132149155446097, guid: a436e4bbf2b1c8149947013dbbc668f4, type: 3}
+  - {fileID: 919132149155446097, guid: 3e1ecebbb95a6304abf376c0ec6d5375, type: 3}
+  - {fileID: 919132149155446097, guid: bce011714799de5478ca608d5b502f56, type: 3}
+  - {fileID: 919132149155446097, guid: 9eafae66fe83113449bf7ace7d23cb86, type: 3}
+  - {fileID: 919132149155446097, guid: 1f726c9e4d2aad74c812477cc1e45601, type: 3}
+  - {fileID: 919132149155446097, guid: 3c7542b60a848c24183f76316cb021af, type: 3}
+  - {fileID: 919132149155446097, guid: 01e0b3c1475b520439fde36ef270e21a, type: 3}
+  - {fileID: 919132149155446097, guid: 9810bd6c696ebef41858098e313d578d, type: 3}
+  - {fileID: 919132149155446097, guid: 65abbd1b2dc891d44b5703e52c54868d, type: 3}
+  - {fileID: 919132149155446097, guid: 8240c98b998e09e40b5b4a29a58f7b0c, type: 3}
+  - {fileID: 919132149155446097, guid: a98cde2e5b089ac4a94476970a7bd134, type: 3}
+  - {fileID: 919132149155446097, guid: e0afcfc99a27a554ca764d298c1be799, type: 3}
+  _streetProps:
+  - {fileID: 919132149155446097, guid: 56dc1af612a894c42a335e84dbfb2045, type: 3}
+  - {fileID: 919132149155446097, guid: 17cb9222bc81dab4a8eed000359edb04, type: 3}
+  _buildingFacing: 0
+  _sidewalkWidth: 2.5
+  _buildingSlotLength: 9.5
+  _streetPropHeight: 4.5
+  _sidewalkColor: {r: 0.74, g: 0.58, b: 0.46, a: 1}
+  _lotColor: {r: 0.52, g: 0.45, b: 0.37, a: 1}
   _obstacleTable: {fileID: 0}
   _difficulty: {fileID: 0}

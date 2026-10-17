@@ -14,17 +14,59 @@ namespace Runner.Spawning
     /// </remarks>
     public sealed class CoinPlacer
     {
+        /// <summary>Degrees per second. One shared angle, so every coin turns in step.</summary>
+        private const float SpinSpeed = 180f;
+
+        /// <summary>Disc across, as a share of the trigger box width. Slightly larger reads better.</summary>
+        private const float DiscDiameterScale = 1.3f;
+
+        /// <summary>Disc thickness, as a share of the trigger box height.</summary>
+        private const float DiscThicknessScale = 0.2f;
+
+        /// <summary>Stands the cylinder primitive on its edge, face towards the camera.</summary>
+        private static readonly Quaternion Upright = Quaternion.Euler(90f, 0f, 0f);
+
         private readonly ObjectPool<Coin> _pool;
         private readonly Material _material;
         private readonly CoinPlacerSettings _settings;
+
+        /// <summary>Every generated disc, filled at warm-up. Spun from one loop, not per-coin Updates.</summary>
+        private readonly System.Collections.Generic.List<Transform> _discs =
+            new System.Collections.Generic.List<Transform>();
 
         public CoinPlacer(Transform poolRoot, CoinPlacerSettings settings, Coin prefab)
         {
             _settings = settings;
             _material = PrimitiveFactory.CreateSharedMaterial(settings.Color, "M_Coin");
 
+            // Gold rather than yellow plastic: a little metal, a lot of shine.
+            if (_material.HasProperty("_Metallic"))
+            {
+                _material.SetFloat("_Metallic", 0.75f);
+            }
+
+            if (_material.HasProperty("_Smoothness"))
+            {
+                _material.SetFloat("_Smoothness", 0.8f);
+            }
+
             _pool = new ObjectPool<Coin>(
                 () => Create(prefab), poolRoot, settings.Capacity, "Coin");
+        }
+
+        /// <summary>
+        /// Turns every coin to the same angle. One rotation computed, then plain writes: no
+        /// allocation and no per-coin Update. Pooled coins turn too; that is cheaper than
+        /// checking which are live.
+        /// </summary>
+        public void Spin(float time)
+        {
+            Quaternion rotation = Quaternion.AngleAxis(time * SpinSpeed, Vector3.up) * Upright;
+
+            for (int i = 0; i < _discs.Count; i++)
+            {
+                _discs[i].localRotation = rotation;
+            }
         }
 
         public void Release(int handle) => _pool.Release(handle);
@@ -115,15 +157,48 @@ namespace Runner.Spawning
             }
             else
             {
-                GameObject go = PrimitiveFactory.CreateCube(
-                    "Coin", _settings.Size, _material, _settings.Layer,
-                    PrimitiveFactory.ColliderMode.Trigger, castShadows: false);
-
-                coin = go.AddComponent<Coin>();
+                coin = CreateDisc();
             }
 
             coin.Initialize(_settings.Value);
             return coin;
+        }
+
+        /// <summary>
+        /// An invisible trigger box, exactly the old coin's size so pickups behave as before,
+        /// holding a gold disc that spins inside it.
+        /// </summary>
+        private Coin CreateDisc()
+        {
+            GameObject root = new GameObject("Coin");
+            root.layer = _settings.Layer;
+
+            BoxCollider trigger = root.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.size = _settings.Size;
+
+            GameObject disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            disc.name = "Disc";
+            disc.layer = _settings.Layer;
+
+            // The primitive brings a collider; the trigger on the root is the real one.
+            ObjectUtility.Destroy(disc.GetComponent<Collider>());
+
+            MeshRenderer renderer = disc.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = _material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            // The cylinder primitive is 1 across and 2 tall, so halve the thickness.
+            float diameter = _settings.Size.x * DiscDiameterScale;
+            float thickness = _settings.Size.y * DiscThicknessScale;
+
+            Transform discTransform = disc.transform;
+            discTransform.SetParent(root.transform, false);
+            discTransform.localScale = new Vector3(diameter, thickness * 0.5f, diameter);
+            discTransform.localRotation = Upright;
+
+            _discs.Add(discTransform);
+            return root.AddComponent<Coin>();
         }
     }
 }

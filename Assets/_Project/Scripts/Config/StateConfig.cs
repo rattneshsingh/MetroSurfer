@@ -47,6 +47,28 @@ namespace Runner.Config
         [Tooltip("Per-kind models. A kind with no entry keeps the generated grey shape.")]
         [SerializeField] private ObstacleArt[] _obstacleArt;
 
+        [Header("Scenery — the street either side of the track")]
+        [Tooltip("Buildings lining the street. Each is scaled evenly to fill its slot, never stretched.")]
+        [SerializeField] private GameObject[] _buildings;
+
+        [Tooltip("Kerbside props, one per side at the start of each stretch: street lights, poles.")]
+        [SerializeField] private GameObject[] _streetProps;
+
+        [Tooltip("Extra turn in degrees so building fronts face the road. Flip by 180 if you see backs.")]
+        [SerializeField] private float _buildingFacing;
+
+        [Tooltip("Metres of pavement between the track edge and the buildings.")]
+        [SerializeField] private float _sidewalkWidth = 2.5f;
+
+        [Tooltip("Street frontage each building gets, in metres.")]
+        [SerializeField] private float _buildingSlotLength = 9.5f;
+
+        [Tooltip("Height of a kerbside prop, in metres.")]
+        [SerializeField] private float _streetPropHeight = 4.5f;
+
+        [SerializeField] private Color _sidewalkColor = new Color(0.62f, 0.60f, 0.56f);
+        [SerializeField] private Color _lotColor = new Color(0.40f, 0.39f, 0.36f);
+
         [Header("Gameplay tuning overrides")]
         [Tooltip("Leave empty to fall back to the GameManager's shared table.")]
         [SerializeField] private ObstacleTable _obstacleTable;
@@ -71,8 +93,18 @@ namespace Runner.Config
         public ObstacleTable ObstacleTable => _obstacleTable;
         public DifficultyCurve Difficulty => _difficulty;
 
-        /// <summary>The model for a kind, or null to keep the generated shape. Pool warm-up only.</summary>
-        public GameObject VisualFor(ObstacleKind kind)
+        public GameObject[] Buildings => _buildings;
+        public GameObject[] StreetProps => _streetProps;
+        public float BuildingFacing => _buildingFacing;
+        public float SidewalkWidth => _sidewalkWidth;
+        public float BuildingSlotLength => _buildingSlotLength;
+        public float StreetPropHeight => _streetPropHeight;
+        public Color SidewalkColor => _sidewalkColor;
+        public Color LotColor => _lotColor;
+        public bool HasScenery => _buildings != null && _buildings.Length > 0;
+
+        /// <summary>The art for a kind, or null to keep the generated shape. Pool warm-up only.</summary>
+        public ObstacleArt ArtFor(ObstacleKind kind)
         {
             if (_obstacleArt == null)
             {
@@ -82,9 +114,9 @@ namespace Runner.Config
             for (int i = 0; i < _obstacleArt.Length; i++)
             {
                 ObstacleArt art = _obstacleArt[i];
-                if (art != null && art.Kind == kind)
+                if (art != null && art.Kind == kind && art.HasEffect)
                 {
-                    return art.Visual;
+                    return art;
                 }
             }
 

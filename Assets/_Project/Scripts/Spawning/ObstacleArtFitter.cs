@@ -1,4 +1,5 @@
 using Runner.Config;
+using Runner.Utils;
 using UnityEngine;
 
 namespace Runner.Spawning
@@ -16,7 +17,7 @@ namespace Runner.Spawning
     /// </remarks>
     public static class ObstacleArtFitter
     {
-        public static void Dress(GameObject obstacle, ObstacleDefinition definition, GameObject art)
+        public static void Dress(GameObject obstacle, ObstacleDefinition definition, GameObject art, float yaw = 0f)
         {
             if (obstacle == null || definition == null || art == null)
             {
@@ -38,15 +39,17 @@ namespace Runner.Spawning
 
             if (!TryGetBounds(model, out Bounds bounds))
             {
-                DestroySafe(wrapper);
+                ObjectUtility.Destroy(wrapper);
                 EnableAll(generated);
                 return;
             }
 
-            // Vehicles are long; obstacles run along Z. A model authored along X gets turned.
-            if (bounds.size.x > bounds.size.z)
+            // Vehicles are long; obstacles run along Z. A model authored along X gets turned,
+            // then the art's own yaw is added (180 for traffic facing the player).
+            float turn = bounds.size.x > bounds.size.z ? 90f : 0f;
+            if (turn + yaw != 0f)
             {
-                model.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+                model.transform.localRotation = Quaternion.Euler(0f, turn + yaw, 0f);
                 TryGetBounds(model, out bounds);
             }
 
@@ -63,8 +66,8 @@ namespace Runner.Spawning
             wrapper.transform.localPosition = new Vector3(0f, definition.BaseHeight, 0f);
         }
 
-        /// <summary>Combined renderer bounds, in world space while the wrapper sits at the origin.</summary>
-        private static bool TryGetBounds(GameObject model, out Bounds bounds)
+        /// <summary>Combined renderer bounds in world space. Shared with SceneryBuilder.</summary>
+        internal static bool TryGetBounds(GameObject model, out Bounds bounds)
         {
             Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
             bounds = default;
@@ -83,25 +86,12 @@ namespace Runner.Spawning
             return bounds.size.x > 0f && bounds.size.y > 0f && bounds.size.z > 0f;
         }
 
-        private static void StripColliders(GameObject model)
+        internal static void StripColliders(GameObject model)
         {
             Collider[] colliders = model.GetComponentsInChildren<Collider>(true);
             for (int i = 0; i < colliders.Length; i++)
             {
-                DestroySafe(colliders[i]);
-            }
-        }
-
-        /// <summary>Destroy is refused outside Play mode, where editor tools and tests run.</summary>
-        private static void DestroySafe(Object target)
-        {
-            if (Application.isPlaying)
-            {
-                Object.Destroy(target);
-            }
-            else
-            {
-                Object.DestroyImmediate(target);
+                ObjectUtility.Destroy(colliders[i]);
             }
         }
 

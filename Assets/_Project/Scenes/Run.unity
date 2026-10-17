@@ -3105,7 +3105,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2064214501}
-  - {fileID: 1720620577}
+  - {fileID: 1755949887}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!65 &869882400
@@ -3185,7 +3185,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Runner::Runner.Player.PlayerAnimator
   _player: {fileID: 869882398}
-  _animator: {fileID: 1720620578}
+  _animator: {fileID: 1755949888}
   _crossFade: 0.12
   _stumbleHold: 0.4
 --- !u!1 &880100917
@@ -5259,7 +5259,7 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1709909599}
   m_CullTransparentMesh: 1
---- !u!1001 &1720620576
+--- !u!1001 &1755949886
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -5360,15 +5360,15 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 14a1cec7d2d8bc5469b5bd3cf874f943, type: 3}
---- !u!4 &1720620577 stripped
+--- !u!4 &1755949887 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 14a1cec7d2d8bc5469b5bd3cf874f943, type: 3}
-  m_PrefabInstance: {fileID: 1720620576}
+  m_PrefabInstance: {fileID: 1755949886}
   m_PrefabAsset: {fileID: 0}
---- !u!95 &1720620578 stripped
+--- !u!95 &1755949888 stripped
 Animator:
   m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 14a1cec7d2d8bc5469b5bd3cf874f943, type: 3}
-  m_PrefabInstance: {fileID: 1720620576}
+  m_PrefabInstance: {fileID: 1755949886}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &1779620574
 GameObject:
