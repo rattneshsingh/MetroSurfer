@@ -39,6 +39,10 @@ namespace Runner.Spawning
         [Tooltip("Z behind the player at which a segment is recycled to the front.")]
         [SerializeField] private float _despawnZ = -18f;
 
+        [Tooltip("Metres of empty road ahead of the player when a run starts: no obstacles, no " +
+                 "coins. Gives time to settle before the first thing to react to.")]
+        [SerializeField] private float _startRunway = 25f;
+
         [Tooltip("Z behind the player at which obstacles stop being drawn. Keeps a bar you just " +
                  "rolled under from filling the camera and hiding what is coming next.")]
         [SerializeField] private float _obstacleCullZ = -1f;
@@ -245,7 +249,11 @@ namespace Runner.Spawning
                 ReleaseContents(segment);
 
                 _segmentTransforms[i].localPosition = new Vector3(0f, 0f, z);
-                PopulateSegment(segment, Mathf.Max(0f, z));
+
+                // Rows short of the runway stay empty — including the segment behind the player,
+                // which used to put coins under their feet and spend the authored intro where
+                // nobody could see it.
+                PopulateSegment(segment, Mathf.Max(0f, z), _startRunway - z);
                 z += _segmentLength;
             }
         }
@@ -329,7 +337,11 @@ namespace Runner.Spawning
             _head = (_head + 1) % _segments.Length;
         }
 
-        private void PopulateSegment(Segment segment, float runDistanceAtSegmentStart)
+        /// <param name="clearBeforeLocalZ">
+        /// Rows nearer the segment start than this are left empty and do not consume generator
+        /// rows, so the intro begins where the runway ends. Zero or less fills every row.
+        /// </param>
+        private void PopulateSegment(Segment segment, float runDistanceAtSegmentStart, float clearBeforeLocalZ = 0f)
         {
             float density = _difficulty.EvaluateObstacleDensity(runDistanceAtSegmentStart);
             float coinChance = _difficulty.EvaluateCoinChance(runDistanceAtSegmentStart);
@@ -338,6 +350,11 @@ namespace Runner.Spawning
             for (int row = 0; row < _rowsPerSegment; row++)
             {
                 float localZ = row * _rowSpacing + _rowSpacing * 0.5f;
+                if (localZ < clearBeforeLocalZ)
+                {
+                    continue;
+                }
+
                 float rowDistance = runDistanceAtSegmentStart + localZ;
 
                 RowPlan plan = _generator.NextRow(rowDistance, density, coinChance);

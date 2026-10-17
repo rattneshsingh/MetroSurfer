@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using Runner.Player;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -77,7 +78,7 @@ namespace Runner.EditorTools
 
             AnimatorController controller = BuildController(clips);
 
-            GameObject runner = PlaceCharacter(player, model);
+            GameObject runner = PlaceCharacter(player.transform, model, CharacterName, TargetHeight);
             Animator animator = runner.GetComponent<Animator>();
             if (animator == null)
             {
@@ -91,7 +92,7 @@ namespace Runner.EditorTools
 
             if (usedKenney)
             {
-                ApplySkin(runner);
+                ApplySkin(runner, AssetDatabase.LoadAssetAtPath<Texture2D>(SkinPath), MaterialPath);
             }
 
             HideCube(player);
@@ -104,6 +105,261 @@ namespace Runner.EditorTools
                 ? "Runner set up with the Kenney character. Press Play."
                 : "Runner set up with the library mannequin — the Kenney character could not be mapped " +
                   "as Humanoid. Press Play.");
+        }
+
+        private const string PursuerControllerPath = OutputFolder + "/Pursuer.controller";
+        private const string PursuerMaterialPath = OutputFolder + "/M_Pursuer.mat";
+        private const string PursuerName = "Officer";
+
+        /// <summary>A head taller than the runner, so he reads as the grown-up doing the chasing.</summary>
+        private const float PursuerHeight = 1.3f;
+
+        /// <summary>Khaki, the colour of a Delhi traffic police uniform. An original look, not any game's chaser.</summary>
+        private static readonly Color Khaki = new Color(0.74f, 0.64f, 0.44f);
+
+        /// <summary>
+        /// Replaces the pursuer's red block with the animation library's mannequin in a khaki
+        /// uniform, sprinting. The mannequin is the rig the animations were made for, so nothing
+        /// is retargeted, and its build differs from the runner's so the two never read alike.
+        /// </summary>
+        /// <remarks>
+        /// The Pursuer component still shows, hides and moves whatever its Visual field points
+        /// at; this only points it at the officer instead of the cube. No runtime code changes.
+        /// </remarks>
+        [MenuItem("Runner/Set Up Pursuer Character", priority = 32)]
+        public static void SetUpPursuer()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("Stop Play mode first — changes made while playing are thrown away.");
+                return;
+            }
+
+            Runner.Core.Pursuer pursuer = Object.FindAnyObjectByType<Runner.Core.Pursuer>();
+            if (pursuer == null)
+            {
+                Debug.LogError("No Pursuer in the open scene. Open Assets/_Project/Scenes/Run.unity first.");
+                return;
+            }
+
+            Dictionary<string, AnimationClip> clips = LoadClips(CharacterImportRules.AnimationLibraryPath);
+            if (!clips.TryGetValue("Sprint_Loop", out AnimationClip sprint))
+            {
+                Debug.LogError("Animation library has no Sprint_Loop. Run Set Up Runner Character first.");
+                return;
+            }
+
+            // The Kenney character in a generated uniform; the mannequin is only the fallback.
+            bool usedKenney = TryLoadHumanoid(CharacterImportRules.KenneyCharacterPath, out GameObject model, out Avatar avatar);
+            if (!usedKenney &&
+                !TryLoadHumanoid(CharacterImportRules.AnimationLibraryPath, out model, out avatar))
+            {
+                Debug.LogError("No character imported as a valid Humanoid. Run Set Up Runner Character " +
+                               "first, which applies the import settings.");
+                return;
+            }
+
+            AnimatorController controller = BuildSprintController(sprint);
+
+            SerializedObject serialized = new SerializedObject(pursuer);
+            SerializedProperty visualProperty = serialized.FindProperty("_visual");
+            Transform oldVisual = visualProperty.objectReferenceValue as Transform;
+
+            GameObject officer = PlaceCharacter(pursuer.transform, model, PursuerName, PursuerHeight);
+
+            Animator animator = officer.GetComponent<Animator>();
+            if (animator == null)
+            {
+                animator = officer.AddComponent<Animator>();
+            }
+
+            animator.runtimeAnimatorController = controller;
+            animator.avatar = avatar;
+            animator.applyRootMotion = false;
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+
+            Texture2D uniform = usedKenney ? CreateOfficerSkin() : null;
+            if (uniform != null)
+            {
+                ApplySkin(officer, uniform, PursuerMaterialPath);
+            }
+            else
+            {
+                ApplySolidColor(officer, Khaki, PursuerMaterialPath);
+            }
+
+            // Retire the cube: Pursuer only toggles its Visual, so a cube left active would stay on screen.
+            if (oldVisual != null && oldVisual != officer.transform)
+            {
+                Renderer[] cube = oldVisual.GetComponentsInChildren<Renderer>(true);
+                for (int i = 0; i < cube.Length; i++)
+                {
+                    cube[i].enabled = false;
+                }
+
+                oldVisual.gameObject.SetActive(false);
+            }
+
+            visualProperty.objectReferenceValue = officer.transform;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            // Hidden until the chase starts, the same as the cube was.
+            officer.SetActive(false);
+
+            EditorSceneManager.MarkSceneDirty(pursuer.gameObject.scene);
+            EditorSceneManager.SaveScene(pursuer.gameObject.scene);
+
+            Debug.Log(uniform != null
+                ? "Pursuer set up: a uniformed officer replaces the red block. Press Play."
+                : "Pursuer set up with the khaki mannequin fallback. Press Play.");
+        }
+
+        private const string OfficerBaseSkinPath = "Assets/Kenney/Characters/Skins/criminalMaleA.png";
+        private const string OfficerSkinPath = OutputFolder + "/officerUniform.png";
+
+        private static readonly Color32 UniformKhaki = new Color32(206, 180, 124, 255);
+        private static readonly Color32 TrouserKhaki = new Color32(168, 144, 98, 255);
+        private static readonly Color32 BeltBrown = new Color32(104, 72, 42, 255);
+
+        /// <summary>
+        /// Builds an original police-uniform skin from Kenney's CC0 criminalMaleA skin: the white
+        /// shirt and trousers become khaki, the green straps a brown leather belt. Face, hair,
+        /// buttons and shoes are untouched. Regenerated from the source on every run, so the
+        /// result can always be rebuilt from what is in the repository.
+        /// </summary>
+        /// <remarks>
+        /// Regions follow Kenney's skin layout (top-origin pixels on a 1024 sheet): shirt
+        /// x 0–640, y 490–1024; trousers x 612–1024, y 764–1024. Texture rows count from the
+        /// bottom, so the bounds below are flipped.
+        /// </remarks>
+        private static Texture2D CreateOfficerSkin()
+        {
+            string fullSource = Path.GetFullPath(OfficerBaseSkinPath);
+            if (!File.Exists(fullSource))
+            {
+                Debug.LogWarning("Base skin not found at " + OfficerBaseSkinPath + ".");
+                return null;
+            }
+
+            Texture2D sheet = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!sheet.LoadImage(File.ReadAllBytes(fullSource)))
+            {
+                Object.DestroyImmediate(sheet);
+                return null;
+            }
+
+            int width = sheet.width;
+            int height = sheet.height;
+            Color32[] pixels = sheet.GetPixels32();
+
+            for (int y = 0; y < height; y++)
+            {
+                float fromBottom = (float)y / height;
+                for (int x = 0; x < width; x++)
+                {
+                    float across = (float)x / width;
+                    bool shirt = across < 0.625f && fromBottom < 0.522f;
+                    bool trousers = across >= 0.598f && fromBottom < 0.254f;
+                    if (!shirt && !trousers)
+                    {
+                        continue;
+                    }
+
+                    int i = y * width + x;
+                    pixels[i] = Recolour(pixels[i], trousers && !shirt ? TrouserKhaki : UniformKhaki);
+                }
+            }
+
+            sheet.SetPixels32(pixels);
+            sheet.Apply();
+
+            EnsureFolder();
+            File.WriteAllBytes(Path.GetFullPath(OfficerSkinPath), sheet.EncodeToPNG());
+            Object.DestroyImmediate(sheet);
+
+            AssetDatabase.ImportAsset(OfficerSkinPath, ImportAssetOptions.ForceUpdate);
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(OfficerSkinPath);
+        }
+
+        /// <summary>Whites become the cloth colour, keeping their shading; greens become the belt.</summary>
+        private static Color32 Recolour(Color32 c, Color32 cloth)
+        {
+            int max = Mathf.Max(c.r, Mathf.Max(c.g, c.b));
+            int min = Mathf.Min(c.r, Mathf.Min(c.g, c.b));
+
+            if (min > 170 && max - min < 40)
+            {
+                float shade = max / 255f;
+                return new Color32(
+                    (byte)(cloth.r * shade), (byte)(cloth.g * shade), (byte)(cloth.b * shade), c.a);
+            }
+
+            if (c.g > c.r + 40 && c.g > c.b)
+            {
+                float shade = c.g / 160f;
+                return new Color32(
+                    (byte)Mathf.Min(255f, BeltBrown.r * shade),
+                    (byte)Mathf.Min(255f, BeltBrown.g * shade),
+                    (byte)Mathf.Min(255f, BeltBrown.b * shade),
+                    c.a);
+            }
+
+            return c;
+        }
+
+        private static AnimatorController BuildSprintController(AnimationClip sprint)
+        {
+            EnsureFolder();
+
+            if (AssetDatabase.LoadAssetAtPath<AnimatorController>(PursuerControllerPath) != null)
+            {
+                AssetDatabase.DeleteAsset(PursuerControllerPath);
+            }
+
+            AnimatorController controller = AnimatorController.CreateAnimatorControllerAtPath(PursuerControllerPath);
+            AnimatorStateMachine machine = controller.layers[0].stateMachine;
+
+            AnimatorState run = machine.AddState("Run");
+            run.motion = sprint;
+            machine.defaultState = run;
+
+            AssetDatabase.SaveAssets();
+            return controller;
+        }
+
+        private static void ApplySolidColor(GameObject character, Color color, string materialPath)
+        {
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null)
+            {
+                Debug.LogWarning("URP Lit shader not found; keeping the imported material.");
+                return;
+            }
+
+            EnsureFolder();
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+            if (material == null)
+            {
+                material = new Material(lit);
+                AssetDatabase.CreateAsset(material, materialPath);
+            }
+
+            material.shader = lit;
+            material.SetColor("_BaseColor", color);
+            material.color = color;
+            EditorUtility.SetDirty(material);
+
+            Renderer[] renderers = character.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Material[] slots = renderers[i].sharedMaterials;
+                for (int s = 0; s < slots.Length; s++)
+                {
+                    slots[s] = material;
+                }
+
+                renderers[i].sharedMaterials = slots;
+            }
         }
 
         private static Dictionary<string, AnimationClip> LoadClips(string path)
@@ -196,33 +452,34 @@ namespace Runner.EditorTools
             return controller;
         }
 
-        private static GameObject PlaceCharacter(LaneController player, GameObject model)
+        /// <summary>Replaces any previous child of that name with the model, sized and on its feet.</summary>
+        private static GameObject PlaceCharacter(Transform parent, GameObject model, string name, float height)
         {
-            Transform existing = player.transform.Find(CharacterName);
+            Transform existing = parent.Find(name);
             if (existing != null)
             {
                 Object.DestroyImmediate(existing.gameObject);
             }
 
-            GameObject runner = (GameObject)PrefabUtility.InstantiatePrefab(model, player.transform);
-            runner.name = CharacterName;
+            GameObject character = (GameObject)PrefabUtility.InstantiatePrefab(model, parent);
+            character.name = name;
 
-            Transform t = runner.transform;
+            Transform t = character.transform;
             t.localPosition = Vector3.zero;
             t.localRotation = Quaternion.identity;
             t.localScale = Vector3.one;
 
-            if (TryGetBounds(runner, out Bounds bounds) && bounds.size.y > 0.0001f)
+            if (TryGetBounds(character, out Bounds bounds) && bounds.size.y > 0.0001f)
             {
-                float scale = TargetHeight / bounds.size.y;
+                float scale = height / bounds.size.y;
                 t.localScale = new Vector3(scale, scale, scale);
 
                 // Feet on the ground, wherever the model's own origin happens to be.
-                TryGetBounds(runner, out bounds);
-                t.localPosition = new Vector3(0f, player.transform.position.y - bounds.min.y, 0f);
+                TryGetBounds(character, out bounds);
+                t.localPosition = new Vector3(0f, parent.position.y - bounds.min.y, 0f);
             }
 
-            return runner;
+            return character;
         }
 
         private static bool TryGetBounds(GameObject root, out Bounds bounds)
@@ -243,22 +500,21 @@ namespace Runner.EditorTools
             return true;
         }
 
-        private static void ApplySkin(GameObject runner)
+        private static void ApplySkin(GameObject runner, Texture2D skin, string materialPath)
         {
-            Texture2D skin = AssetDatabase.LoadAssetAtPath<Texture2D>(SkinPath);
             Shader lit = Shader.Find("Universal Render Pipeline/Lit");
             if (skin == null || lit == null)
             {
-                Debug.LogWarning("Could not load the runner skin or the URP Lit shader; keeping the imported material.");
+                Debug.LogWarning("Could not load the skin or the URP Lit shader; keeping the imported material.");
                 return;
             }
 
             EnsureFolder();
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
             if (material == null)
             {
                 material = new Material(lit);
-                AssetDatabase.CreateAsset(material, MaterialPath);
+                AssetDatabase.CreateAsset(material, materialPath);
             }
 
             material.shader = lit;
