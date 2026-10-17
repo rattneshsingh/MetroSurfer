@@ -43,6 +43,10 @@ namespace Runner.Config
         [SerializeField] private string _vehiclePrefabAddress;
         [SerializeField] private string _musicTrackAddress;
 
+        [Header("Art — direct references until Addressables lands")]
+        [Tooltip("Per-kind models. A kind with no entry keeps the generated grey shape.")]
+        [SerializeField] private ObstacleArt[] _obstacleArt;
+
         [Header("Gameplay tuning overrides")]
         [Tooltip("Leave empty to fall back to the GameManager's shared table.")]
         [SerializeField] private ObstacleTable _obstacleTable;
@@ -66,5 +70,25 @@ namespace Runner.Config
 
         public ObstacleTable ObstacleTable => _obstacleTable;
         public DifficultyCurve Difficulty => _difficulty;
+
+        /// <summary>The model for a kind, or null to keep the generated shape. Pool warm-up only.</summary>
+        public GameObject VisualFor(ObstacleKind kind)
+        {
+            if (_obstacleArt == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < _obstacleArt.Length; i++)
+            {
+                ObstacleArt art = _obstacleArt[i];
+                if (art != null && art.Kind == kind)
+                {
+                    return art.Visual;
+                }
+            }
+
+            return null;
+        }
     }
 }

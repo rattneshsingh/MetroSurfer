@@ -487,6 +487,7 @@ namespace Runner.Core
             if (_player != null)
             {
                 _player.SetRunning(false);
+                _player.PlayDeath();
             }
         }
 

@@ -120,6 +120,7 @@ namespace Runner.Spawning
 
         private ObstacleFactory _obstacles;
         private CoinPlacer _coins;
+        private StateConfig _stateConfig;
 
         private Material _groundMaterial;
 
@@ -165,6 +166,7 @@ namespace Runner.Spawning
             _presentationRng = new System.Random(_seed);
             _generator = new TrackGenerator(_seed, _introSequence, obstacleTable, _catalog, _minRowGapAfterHardRow);
 
+            _stateConfig = state;
             ApplyPalette(state);
             ResolveLayers();
 
@@ -491,7 +493,8 @@ namespace Runner.Spawning
                     _driftAmplitude, _driftPeriod,
                     _oncomingSpeed, _oncomingMaxTravel,
                     _busCruiseSpeed, _busBrakeTriggerZ, _busBrakeDuration),
-                Roll);
+                Roll,
+                _stateConfig);
 
             int coinCapacity = _coinPoolCapacity > 0
                 ? _coinPoolCapacity

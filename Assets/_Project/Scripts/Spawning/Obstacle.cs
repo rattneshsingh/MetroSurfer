@@ -13,6 +13,13 @@ namespace Runner.Spawning
     {
         [SerializeField] private ObstacleKind _kind;
 
+        /// <summary>
+        /// Everything that draws this obstacle: a state's model when it has been dressed,
+        /// otherwise the generated mesh. Never the generated mesh hidden under a model.
+        /// </summary>
+        private Renderer[] _visible;
+
+        /// <summary>The one renderer the brake-light material swap targets.</summary>
         private Renderer _renderer;
         private MovingObstacle _drift;
         private Material _defaultMaterial;
@@ -30,8 +37,8 @@ namespace Runner.Spawning
         public void Initialize(ObstacleKind kind)
         {
             _kind = kind;
-            // Landable pieces keep their mesh on a child, so search downward.
-            _renderer = GetComponentInChildren<Renderer>();
+            _visible = CollectVisibleRenderers();
+            _renderer = _visible.Length > 0 ? _visible[0] : null;
             _drift = GetComponent<MovingObstacle>();
 
             if (_renderer != null)
@@ -79,25 +86,69 @@ namespace Runner.Spawning
         /// </summary>
         public void Hide()
         {
-            if (_hidden || _renderer == null)
+            if (_hidden)
             {
                 return;
             }
 
             _hidden = true;
-            _renderer.enabled = false;
+            SetVisible(false);
         }
 
         private void Show()
         {
-            if (!_hidden || _renderer == null)
+            if (!_hidden)
             {
-                _hidden = false;
                 return;
             }
 
             _hidden = false;
-            _renderer.enabled = true;
+            SetVisible(true);
+        }
+
+        /// <summary>Indexed loop over the cached array: no allocation on spawn or pass.</summary>
+        private void SetVisible(bool visible)
+        {
+            if (_visible == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _visible.Length; i++)
+            {
+                _visible[i].enabled = visible;
+            }
+        }
+
+        /// <summary>
+        /// The renderers that are switched on at warm-up. A dressed obstacle has already had its
+        /// generated mesh switched off, so this picks up only the model. Warm-up only.
+        /// </summary>
+        private Renderer[] CollectVisibleRenderers()
+        {
+            // Landable pieces keep their mesh on a child, so search downward.
+            Renderer[] all = GetComponentsInChildren<Renderer>(true);
+
+            int count = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i].enabled)
+                {
+                    count++;
+                }
+            }
+
+            Renderer[] visible = new Renderer[count];
+            int next = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i].enabled)
+                {
+                    visible[next++] = all[i];
+                }
+            }
+
+            return visible;
         }
     }
 }

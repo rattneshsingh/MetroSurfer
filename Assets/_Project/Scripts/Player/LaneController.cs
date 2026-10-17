@@ -57,6 +57,8 @@ namespace Runner.Player
         private float _slideBufferedAt = float.NegativeInfinity;
 
         private bool _running;
+        private bool _isDead;
+        private int _stumbleCount;
         private float _groundHeight;
         private float _supportY;
 
@@ -94,7 +96,22 @@ namespace Runner.Player
         public void PlayStumble()
         {
             _flinchTimer = Tuning.FlinchDuration;
+            _stumbleCount++;
         }
+
+        /// <summary>Marks the run as lost, for anything presenting the player. No gameplay effect.</summary>
+        public void PlayDeath()
+        {
+            _isDead = true;
+        }
+
+        /// <summary>
+        /// Rises by one per stumble. A counter rather than an event, so a presenter can poll it
+        /// each frame without subscriptions or allocations.
+        /// </summary>
+        public int StumbleCount => _stumbleCount;
+        public bool IsDead => _isDead;
+        public bool IsRunning => _running;
 
         /// <summary>True while the horizontal snap is still running.</summary>
         public bool IsChangingLanes => _laneTimer < Tuning.LaneSnapDuration;
@@ -200,6 +217,7 @@ namespace Runner.Player
             _slideBufferedAt = float.NegativeInfinity;
             _flinchTimer = 0f;
             _lastActionTime = float.NegativeInfinity;
+            _isDead = false;
 
             EndSlide();
 

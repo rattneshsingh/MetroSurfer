@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2392afa5d20d54c4d9afb2ba1fd19a0a, type: 3}
+  m_Name: Delhi
+  m_EditorClassIdentifier: Runner::Runner.Config.StateConfig
+  _displayName: Delhi
+  _groundColor: {r: 0.32, g: 0.32, b: 0.34, a: 1}
+  _obstacleColor: {r: 0.18, g: 0.18, b: 0.2, a: 1}
+  _coinColor: {r: 0.95, g: 0.78, b: 0.25, a: 1}
+  _skyColor: {r: 0.45, g: 0.52, b: 0.6, a: 1}
+  _propSetAddresses: []
+  _skylineSetAddress: 
+  _landmarkAddress: 
+  _trainPrefabAddress: 
+  _vehiclePrefabAddress: 
+  _musicTrackAddress: 
+  _obstacleArt:
+  - Kind: 5
+    Visual: {fileID: 919132149155446097, guid: 0fdbaf8ff2592d94bbd85f1855b9978d, type: 3}
+  - Kind: 4
+    Visual: {fileID: 919132149155446097, guid: 92fde9f4855e93c4a9e0e64beef8fbac, type: 3}
+  - Kind: 6
+    Visual: {fileID: 919132149155446097, guid: 40368932e1ec60a46879ff9d2f30c5bd, type: 3}
+  - Kind: 7
+    Visual: {fileID: 919132149155446097, guid: 88c5dc58d08b8524483dc757badb99c5, type: 3}
+  - Kind: 10
+    Visual: {fileID: 919132149155446097, guid: 368d2b9be062d744d8cbfeba35e3c227, type: 3}
+  _obstacleTable: {fileID: 0}
+  _difficulty: {fileID: 0}

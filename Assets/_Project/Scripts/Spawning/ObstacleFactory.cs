@@ -22,6 +22,7 @@ namespace Runner.Spawning
         private readonly Transform _poolRoot;
         private readonly ObstacleFactorySettings _settings;
         private readonly System.Func<float> _roll;
+        private readonly StateConfig _state;
 
         private readonly ObjectPool<Obstacle>[] _poolsByKind;
         private readonly Material _obstacleMaterial;
@@ -32,12 +33,16 @@ namespace Runner.Spawning
             ObstacleCatalog catalog,
             Transform poolRoot,
             ObstacleFactorySettings settings,
-            System.Func<float> roll)
+            System.Func<float> roll,
+            StateConfig state = null)
         {
             _catalog = catalog;
             _poolRoot = poolRoot;
             _settings = settings;
             _roll = roll;
+
+            // Optional: without a state every obstacle keeps its generated grey shape.
+            _state = state;
 
             _obstacleMaterial = PrimitiveFactory.CreateSharedMaterial(settings.ObstacleColor, "M_Obstacle");
             _pitMaterial = PrimitiveFactory.CreateSharedMaterial(settings.PitColor, "M_Pit");
@@ -182,6 +187,13 @@ namespace Runner.Spawning
                     default:
                         obstacle = BuildBarrier(definition);
                         break;
+                }
+
+                // A state's model replaces only what is drawn. The generated physics stays.
+                GameObject art = _state != null ? _state.VisualFor(definition.Kind) : null;
+                if (art != null)
+                {
+                    ObstacleArtFitter.Dress(obstacle.gameObject, definition, art);
                 }
             }
 
