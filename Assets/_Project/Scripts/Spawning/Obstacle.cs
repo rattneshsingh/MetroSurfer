@@ -22,6 +22,7 @@ namespace Runner.Spawning
         /// <summary>The one renderer the brake-light material swap targets.</summary>
         private Renderer _renderer;
         private MovingObstacle _drift;
+        private PitHole _pit;
         private Material _defaultMaterial;
         private bool _hidden;
 
@@ -29,6 +30,9 @@ namespace Runner.Spawning
 
         /// <summary>Null on anything that keeps pace with the world.</summary>
         public MovingObstacle Drift => _drift;
+
+        /// <summary>The visible hole, on pits only. Cached at warm-up so placement never searches.</summary>
+        public PitHole Pit => _pit;
 
         /// <summary>
         /// Called once at pool warm-up. Explicit rather than relying on Awake, because a
@@ -40,6 +44,7 @@ namespace Runner.Spawning
             _visible = CollectVisibleRenderers();
             _renderer = _visible.Length > 0 ? _visible[0] : null;
             _drift = GetComponent<MovingObstacle>();
+            _pit = GetComponent<PitHole>();
 
             if (_renderer != null)
             {

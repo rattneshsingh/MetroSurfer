@@ -258,8 +258,8 @@ namespace Runner.EditorTools
             gameManager = bootstrap.AddComponent<GameManager>();
         }
 
-        /// <summary>Working title from CLAUDE.md. Change it here when the real name is picked.</summary>
-        private const string GameTitle = "RUNNER";
+        /// <summary>The game's name as shown on the title screen.</summary>
+        private const string GameTitle = "METRO RUNNER";
 
         private static readonly Color Gold = new Color(1f, 0.80f, 0.22f);
         private static readonly Color Go = new Color(0.30f, 0.82f, 0.48f);
@@ -373,6 +373,11 @@ namespace Runner.EditorTools
             TextMeshProUGUI title = CreateText(ready, "Title", GameTitle, 170f, TextAlignmentOptions.Center);
             title.fontStyle = FontStyles.Bold;
             title.color = Gold;
+
+            // Shrinks to fit its box, so a longer name never runs off a narrow screen.
+            title.enableAutoSizing = true;
+            title.fontSizeMin = 80f;
+            title.fontSizeMax = 170f;
             AnchorCentre(title.rectTransform, new Vector2(1000f, 220f), 520f);
 
             TextMeshProUGUI tagline = CreateText(ready, "Tagline", "Run the city. Climb the traffic.", 50f,

@@ -32,14 +32,30 @@ namespace Runner.Spawning
         /// <summary>One shared material per painted kind, made the first time that kind is built.</summary>
         private readonly Material[] _paintMaterials = new Material[KindCount];
 
-        /// <summary>Striped road-works border around a pit, so a dark patch reads as a hole.</summary>
-        private readonly Material _pitRimMaterial;
+        /// <summary>
+        /// A pit is a real hole: an open box sunk below the road, drawn first, then a depth-only
+        /// cutter over its mouth, then the road — which fails the depth test there and leaves
+        /// the box visible. Queues fix that order; Geometry is 2000.
+        /// </summary>
+        private const int HoleInteriorQueue = 1980;
+        private const int HoleCutterQueue = 1990;
 
-        private static readonly Color PitRimColor = new Color(0.95f, 0.55f, 0.15f);
+        /// <summary>How deep the hole looks, in metres. Purely visual; the lethal volume decides play.</summary>
+        private const float HoleDepth = 1.2f;
 
-        /// <summary>Width and height of the pit's border, in metres. Low enough never to read as a step.</summary>
-        private const float PitRimWidth = 0.18f;
-        private const float PitRimHeight = 0.06f;
+        /// <summary>Cutter height above the road: enough to win the depth test, too little to see.</summary>
+        private const float HoleLift = 0.005f;
+
+        private const string DepthMaskShaderPath = "Shaders/RunnerDepthMask";
+
+        private static readonly Color HoleWallColor = new Color(0.30f, 0.27f, 0.24f);
+
+        private readonly Material _holeCutterMaterial;
+        private readonly Material _holeWallMaterial;
+        private readonly Material _holeFloorMaterial;
+
+        private static Mesh _holeMesh;
+        private static Mesh _wallMesh;
 
         private static Texture2D _hazardStripes;
 
@@ -62,8 +78,21 @@ namespace Runner.Spawning
             _pitMaterial = PrimitiveFactory.CreateSharedMaterial(settings.PitColor, "M_Pit");
             _brakeMaterial = PrimitiveFactory.CreateSharedMaterial(settings.BrakeColor, "M_Brake");
 
-            _pitRimMaterial = PrimitiveFactory.CreateSharedMaterial(PitRimColor, "M_PitRim");
-            _pitRimMaterial.mainTexture = HazardStripes;
+            _holeWallMaterial = PrimitiveFactory.CreateSharedMaterial(HoleWallColor, "M_PitWall");
+            _holeWallMaterial.renderQueue = HoleInteriorQueue;
+            _holeFloorMaterial = PrimitiveFactory.CreateSharedMaterial(settings.PitColor, "M_PitFloor");
+            _holeFloorMaterial.renderQueue = HoleInteriorQueue;
+
+            Shader depthMask = Resources.Load<Shader>(DepthMaskShaderPath);
+            if (depthMask != null)
+            {
+                _holeCutterMaterial = new Material(depthMask) { name = "M_PitCutter", renderQueue = HoleCutterQueue };
+            }
+            else
+            {
+                Debug.LogWarning($"Depth mask shader missing at Resources/{DepthMaskShaderPath}; pits will draw " +
+                                 "as dark patches instead of holes.");
+            }
 
             _poolsByKind = new ObjectPool<Obstacle>[KindCount];
             BuildPools();
@@ -112,7 +141,9 @@ namespace Runner.Spawning
             ObjectUtility.Destroy(_obstacleMaterial);
             ObjectUtility.Destroy(_pitMaterial);
             ObjectUtility.Destroy(_brakeMaterial);
-            ObjectUtility.Destroy(_pitRimMaterial);
+            ObjectUtility.Destroy(_holeCutterMaterial);
+            ObjectUtility.Destroy(_holeWallMaterial);
+            ObjectUtility.Destroy(_holeFloorMaterial);
 
             for (int i = 0; i < _paintMaterials.Length; i++)
             {
@@ -350,44 +381,34 @@ namespace Runner.Spawning
         {
             GameObject root = new GameObject("Obstacle_" + definition.Kind);
 
-            GameObject slab = PrimitiveFactory.CreateCube(
-                "Slab", definition.Size, MaterialFor(definition.Tint), root.layer,
-                PrimitiveFactory.ColliderMode.None, castShadows: false);
+            // The interior: a floor and three walls sunk below the road, in a unit frame that
+            // PitHole scales to the lane cell. Walls are separate so neighbours can drop them.
+            Transform interior = new GameObject("Interior").transform;
+            interior.gameObject.layer = root.layer;
+            interior.SetParent(root.transform, false);
+            interior.localPosition = new Vector3(0f, definition.BaseHeight, 0f);
+            interior.localScale = new Vector3(definition.Size.x, HoleDepth, definition.Size.z);
 
-            slab.transform.SetParent(root.transform, false);
-            slab.transform.localPosition = new Vector3(
-                0f, definition.BaseHeight + definition.Size.y * 0.5f, 0f);
+            AddMeshChild(interior, "Floor", HoleMesh, _holeFloorMaterial,
+                new Vector3(0f, -1f, 0f), Quaternion.identity);
+            GameObject far = AddMeshChild(interior, "WallFar", WallMesh, _holeWallMaterial,
+                new Vector3(0f, 0f, 0.5f), Quaternion.identity);
+            GameObject left = AddMeshChild(interior, "WallLeft", WallMesh, _holeWallMaterial,
+                new Vector3(-0.5f, 0f, 0f), Quaternion.Euler(0f, -90f, 0f));
+            GameObject right = AddMeshChild(interior, "WallRight", WallMesh, _holeWallMaterial,
+                new Vector3(0.5f, 0f, 0f), Quaternion.Euler(0f, 90f, 0f));
 
-            AddPitRim(root, definition);
+            // The cutter: invisible, but the road cannot draw through it, so the hole shows. With
+            // no depth-mask shader it falls back to a dark patch, which still reads as a hazard.
+            Material mouth = _holeCutterMaterial != null ? _holeCutterMaterial : _holeFloorMaterial;
+            Transform cutter = AddMeshChild(root.transform, "Cutter", HoleMesh, mouth,
+                new Vector3(0f, definition.BaseHeight + HoleLift, 0f), Quaternion.identity).transform;
+            cutter.localScale = new Vector3(definition.Size.x, 1f, definition.Size.z);
+
+            root.AddComponent<PitHole>().Initialize(interior, cutter, left, right, far, HoleDepth);
+
             AddLethalVolume(root, definition);
             return root.AddComponent<Obstacle>();
-        }
-
-        /// <summary>
-        /// Four striped kerbs just inside the pit's edge. Visual only — no colliders — and kept
-        /// inside the footprint so the pit's size on screen is still its size in play.
-        /// </summary>
-        private void AddPitRim(GameObject root, ObstacleDefinition definition)
-        {
-            Vector3 size = definition.Size;
-            float y = definition.BaseHeight + size.y + PitRimHeight * 0.5f;
-            float halfX = size.x * 0.5f - PitRimWidth * 0.5f;
-            float halfZ = size.z * 0.5f - PitRimWidth * 0.5f;
-
-            AddRimPiece(root, "RimLeft", new Vector3(PitRimWidth, PitRimHeight, size.z), new Vector3(-halfX, y, 0f));
-            AddRimPiece(root, "RimRight", new Vector3(PitRimWidth, PitRimHeight, size.z), new Vector3(halfX, y, 0f));
-            AddRimPiece(root, "RimNear", new Vector3(size.x, PitRimHeight, PitRimWidth), new Vector3(0f, y, -halfZ));
-            AddRimPiece(root, "RimFar", new Vector3(size.x, PitRimHeight, PitRimWidth), new Vector3(0f, y, halfZ));
-        }
-
-        private void AddRimPiece(GameObject root, string name, Vector3 size, Vector3 localPosition)
-        {
-            GameObject piece = PrimitiveFactory.CreateCube(
-                name, size, _pitRimMaterial, root.layer,
-                PrimitiveFactory.ColliderMode.None, castShadows: false);
-
-            piece.transform.SetParent(root.transform, false);
-            piece.transform.localPosition = localPosition;
         }
 
         /// <summary>The kill volume, whose bounds the definition works out per form.</summary>
@@ -474,6 +495,85 @@ namespace Runner.Spawning
                 _hazardStripes.Apply(false, true);
                 return _hazardStripes;
             }
+        }
+
+        /// <summary>
+        /// A unit quad lying flat, UV v running near to far (−Z to +Z), so the hole texture's far
+        /// wall always lands on the side facing the camera. Shared by every pit.
+        /// </summary>
+        private static Mesh HoleMesh
+        {
+            get
+            {
+                if (_holeMesh != null)
+                {
+                    return _holeMesh;
+                }
+
+                _holeMesh = new Mesh
+                {
+                    name = "PitHole",
+                    vertices = new[]
+                    {
+                        new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 0f, -0.5f),
+                        new Vector3(-0.5f, 0f, 0.5f), new Vector3(0.5f, 0f, 0.5f)
+                    },
+                    uv = new[] { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 1f), new Vector2(1f, 1f) },
+                    normals = new[] { Vector3.up, Vector3.up, Vector3.up, Vector3.up },
+                    triangles = new[] { 0, 2, 1, 2, 3, 1 }
+                };
+                _holeMesh.RecalculateBounds();
+                return _holeMesh;
+            }
+        }
+
+        /// <summary>
+        /// A unit upright panel hanging from y = 0 down to y = −1, facing −Z (towards the chase
+        /// camera). Turned and placed to make each wall of a pit; rotations are multiples of 90
+        /// degrees, so the pit's non-uniform scale never shears it. Shared by every pit.
+        /// </summary>
+        private static Mesh WallMesh
+        {
+            get
+            {
+                if (_wallMesh != null)
+                {
+                    return _wallMesh;
+                }
+
+                // Clockwise as seen from −Z, the side the panel faces.
+                _wallMesh = new Mesh
+                {
+                    name = "PitWall",
+                    vertices = new[]
+                    {
+                        new Vector3(-0.5f, -1f, 0f), new Vector3(-0.5f, 0f, 0f),
+                        new Vector3(0.5f, 0f, 0f), new Vector3(0.5f, -1f, 0f)
+                    },
+                    normals = new[] { Vector3.back, Vector3.back, Vector3.back, Vector3.back },
+                    triangles = new[] { 0, 1, 2, 0, 2, 3 }
+                };
+                _wallMesh.RecalculateBounds();
+                return _wallMesh;
+            }
+        }
+
+        /// <summary>A visual-only mesh child: no collider, no shadow casting.</summary>
+        private static GameObject AddMeshChild(
+            Transform parent, string name, Mesh mesh, Material material, Vector3 localPosition, Quaternion localRotation)
+        {
+            GameObject child = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
+            child.layer = parent.gameObject.layer;
+            child.GetComponent<MeshFilter>().sharedMesh = mesh;
+
+            MeshRenderer renderer = child.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            child.transform.SetParent(parent, false);
+            child.transform.localPosition = localPosition;
+            child.transform.localRotation = localRotation;
+            return child;
         }
 
         /// <summary>

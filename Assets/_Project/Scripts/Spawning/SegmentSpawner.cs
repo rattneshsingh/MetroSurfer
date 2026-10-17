@@ -127,6 +127,14 @@ namespace Runner.Spawning
         private StateConfig _stateConfig;
         private SceneryBuilder _scenery;
 
+        /// <summary>
+        /// Pits by lane in the row just placed and the one before it, so touching pits can drop
+        /// the walls between them and read as one hole. Rows are generated strictly in order,
+        /// so "the row before" is always the neighbour behind.
+        /// </summary>
+        private readonly PitHole[] _pitsThisRow = new PitHole[LaneCount];
+        private readonly PitHole[] _pitsLastRow = new PitHole[LaneCount];
+
         private Material _groundMaterial;
 
         private int _obstacleLayer;
@@ -239,6 +247,9 @@ namespace Runner.Spawning
             _generator.Reset();
             _presentationRng = new System.Random(_seed);
             _head = 0;
+
+            // A new run has no row before its first one.
+            System.Array.Clear(_pitsLastRow, 0, _pitsLastRow.Length);
 
             // One segment starts behind the player so the track does not visibly begin at their feet.
             float z = -_segmentLength;
@@ -368,10 +379,14 @@ namespace Runner.Spawning
         /// </summary>
         private void Realise(Segment segment, RowPlan plan, float localZ, float speed)
         {
+            System.Array.Clear(_pitsThisRow, 0, _pitsThisRow.Length);
+
             if (plan.HasObstacles)
             {
                 PlaceRow(segment, plan.LaneMask, plan.Kind, localZ);
             }
+
+            StitchPits();
 
             if (!plan.HasCoins)
             {
@@ -421,6 +436,44 @@ namespace Runner.Spawning
             t.localPosition = new Vector3(LaneToX(lane), 0f, localZ);
 
             segment.AddObstacle(obstacle, handle, kind, localZ);
+
+            PitHole pit = obstacle.Pit;
+            if (pit != null)
+            {
+                // Fresh from the pool: full cell, every wall, before neighbours open it up.
+                pit.Fit(_laneWidth, _rowSpacing);
+                pit.ResetWalls();
+                _pitsThisRow[lane] = pit;
+            }
+        }
+
+        /// <summary>
+        /// Opens the walls between touching pits: side by side in this row, and front to back
+        /// with the row before. Then this row becomes "the row before" for the next one.
+        /// </summary>
+        private void StitchPits()
+        {
+            for (int lane = 0; lane < LaneCount; lane++)
+            {
+                PitHole pit = _pitsThisRow[lane];
+                if (pit == null)
+                {
+                    continue;
+                }
+
+                if (lane > 0 && _pitsThisRow[lane - 1] != null)
+                {
+                    pit.OpenLeft();
+                    _pitsThisRow[lane - 1].OpenRight();
+                }
+
+                if (_pitsLastRow[lane] != null)
+                {
+                    _pitsLastRow[lane].OpenFar();
+                }
+            }
+
+            System.Array.Copy(_pitsThisRow, _pitsLastRow, LaneCount);
         }
 
         private void ReleaseContents(Segment segment)

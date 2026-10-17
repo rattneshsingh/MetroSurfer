@@ -7,7 +7,7 @@ A 3-lane endless runner for **Android**, themed around Indian states. Each state
 gameplay core. Solo developer, evenings only. Currently in **Phase 1** (see
 "Phase 1 scope" at the bottom; Phase 0 gameplay core is complete).
 
-Working title: `RUNNER` — rename throughout when the real name is picked.
+Name: **Metro Runner** (chosen 2026-10-17). Code namespaces stay `Runner.*`.
 
 ## Stack
 
