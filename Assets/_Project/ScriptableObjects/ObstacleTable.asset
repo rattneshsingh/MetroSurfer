@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7b471634c4e9c324bb8205a532d2a2b8, type: 3}
   m_Name: ObstacleTable
   m_EditorClassIdentifier: Runner::Runner.Config.ObstacleTable
-  _defaultsVersion: 2
+  _defaultsVersion: 4
   _patterns:
   - LaneMask: 1
     Kind: 0
@@ -642,7 +642,7 @@ MonoBehaviour:
     MinDistance: 0
     Difficulty: 0.55
     Entry: 1
-    Exit: 1
+    Exit: 0
   - Name: Underpass
     Rows:
     - LaneMask: 0
@@ -741,6 +741,10 @@ MonoBehaviour:
     Exit: 0
   - Name: Traffic jam
     Rows:
+    - LaneMask: 0
+      Kind: 0
+      Coins: 0
+      CoinArc: 0
     - LaneMask: 1
       Kind: 10
       Coins: 0
