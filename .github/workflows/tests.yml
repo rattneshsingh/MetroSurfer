@@ -1,11 +1,11 @@
 name: Tests
 
-# Runs the whole suite on every push and pull request, so the tests stop being
-# something someone has to remember to run.
+# Manual only until the Unity licence secrets are added (see README.md here).
+# Once they are, restore the automatic triggers so every push runs the suite:
+#   push:
+#     branches: [main]
+#   pull_request:
 on:
-  push:
-    branches: [master, main]
-  pull_request:
   workflow_dispatch:
 
 jobs:
