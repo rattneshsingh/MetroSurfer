@@ -68,7 +68,7 @@ namespace Runner.EditorTools
             LaneController player = BuildPlayer(out PlayerCollision playerCollision, out BoxCollider hitbox, out Transform visual);
             Pursuer pursuer = BuildPursuer();
             BuildBootstrap(out PlayerInputReader input, out SegmentSpawner spawner, out GameManager gameManager);
-            HudController hud = BuildHud();
+            HudController hud = BuildHud(out RectTransform[] touchBlockers);
 
             DifficultyCurve difficulty = LoadOrCreateAsset(DifficultyAssetPath, DifficultyCurve.CreateDefault);
             ObstacleTable obstacleTable = LoadOrCreateAsset(ObstacleTableAssetPath, ObstacleTable.CreateDefault);
@@ -79,6 +79,7 @@ namespace Runner.EditorTools
 
             WireSpawner(spawner, introSequence, catalog);
             WirePlayer(player, hitbox, visual, input, playerTuning);
+            WireInputBlockers(input, touchBlockers);
             WireGameManager(gameManager, player, spawner, input, hud, difficulty, obstacleTable, pursuer, cameraShake, runTuning);
 
             SaveScene(scene);
@@ -87,7 +88,8 @@ namespace Runner.EditorTools
 
             Debug.Log(
                 "Phase 0 scene built at " + ScenePath + ".\n" +
-                "Press Play. A/D or arrows to switch lanes, W/Up/Space to jump, S/Down to slide, R to restart.\n" +
+                "Press Play. A/D or arrows to switch lanes, W/Up/Space to jump, S/Down to slide, " +
+                "Esc/P to pause, R to restart.\n" +
                 "Tune feel on the PlayerTuning and RunTuning assets -- those survive pressing Stop.");
 
             WarnIfTextMeshProUnavailable();
@@ -256,7 +258,59 @@ namespace Runner.EditorTools
             gameManager = bootstrap.AddComponent<GameManager>();
         }
 
-        private static HudController BuildHud()
+        /// <summary>Working title from CLAUDE.md. Change it here when the real name is picked.</summary>
+        private const string GameTitle = "RUNNER";
+
+        private static readonly Color Gold = new Color(1f, 0.80f, 0.22f);
+        private static readonly Color Go = new Color(0.30f, 0.82f, 0.48f);
+        private static readonly Color Neutral = new Color(0.86f, 0.87f, 0.91f);
+        private static readonly Color Alert = new Color(1f, 0.36f, 0.45f);
+        private static readonly Color Ink = new Color(0.10f, 0.11f, 0.14f);
+        private static readonly Color Pill = new Color(0f, 0f, 0f, 0.45f);
+        private static readonly Color Card = new Color(0.12f, 0.13f, 0.17f, 0.96f);
+
+        /// <summary>
+        /// Replaces only the HUD in the open scene and rewires it. Unlike Build Phase 0 Scene,
+        /// this keeps every other object as it is, so hand-tuned camera or lighting survives.
+        /// </summary>
+        [MenuItem("Runner/Rebuild HUD", priority = 1)]
+        public static void RebuildHud()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("Stop Play mode first — changes made while playing are thrown away.");
+                return;
+            }
+
+            GameManager gameManager = Object.FindAnyObjectByType<GameManager>();
+            if (gameManager == null)
+            {
+                Debug.LogError("No GameManager in the open scene. Open " + ScenePath + " first.");
+                return;
+            }
+
+            HudController old = Object.FindAnyObjectByType<HudController>(FindObjectsInactive.Include);
+            if (old != null)
+            {
+                Object.DestroyImmediate(old.gameObject);
+            }
+
+            HudController hud = BuildHud(out RectTransform[] touchBlockers);
+
+            SerializedObject serialized = new SerializedObject(gameManager);
+            SetReference(serialized, "_hud", hud);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            WireInputBlockers(Object.FindAnyObjectByType<PlayerInputReader>(), touchBlockers);
+
+            Scene scene = gameManager.gameObject.scene;
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+
+            Debug.Log("HUD rebuilt and saved. Press Play.");
+        }
+
+        private static HudController BuildHud(out RectTransform[] touchBlockers)
         {
             GameObject canvasObject = new GameObject("HUD", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             canvasObject.layer = LayerMask.NameToLayer("UI");
@@ -264,55 +318,279 @@ namespace Runner.EditorTools
             Canvas canvas = canvasObject.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 
+            // Expand keeps the whole 1080x1920 layout on screen at any aspect: a phone shows it
+            // edge to edge, a landscape window or desktop browser shows it as a centred column
+            // instead of cutting off the top and bottom.
             CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1080f, 1920f);
-            scaler.matchWidthOrHeight = 0.5f;
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
 
             EnsureEventSystem();
 
             RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
 
-            TextMeshProUGUI scoreText = CreateText(canvasRect, "ScoreText", "0", 90f, TextAlignmentOptions.Top);
-            AnchorTop(scoreText.rectTransform, new Vector2(600f, 140f), -90f);
+            // ---- Running: coins and distance top-left, score centre, pause top-right ----
+            GameObject runningRoot = CreateGroup(canvasRect, "Running");
+            RectTransform running = runningRoot.GetComponent<RectTransform>();
 
-            TextMeshProUGUI multiplierText = CreateText(canvasRect, "MultiplierText", "x2", 64f, TextAlignmentOptions.Top);
-            multiplierText.color = new Color(1f, 0.85f, 0.3f);
-            AnchorTop(multiplierText.rectTransform, new Vector2(400f, 100f), -230f);
-            multiplierText.gameObject.SetActive(false);
+            Image coinsPill = CreateImage(running, "CoinsPill", RoundedSprite, Pill);
+            Place(coinsPill.rectTransform, new Vector2(0f, 1f), new Vector2(300f, 104f), new Vector2(36f, -48f));
 
+            Image coinIcon = CreateImage(coinsPill.rectTransform, "CoinIcon", CircleSprite, Gold);
+            Place(coinIcon.rectTransform, new Vector2(0f, 0.5f), new Vector2(64f, 64f), new Vector2(22f, 0f));
+
+            TextMeshProUGUI coinsText = CreateText(coinsPill.rectTransform, "CoinsText", "0", 60f, TextAlignmentOptions.Left);
+            coinsText.fontStyle = FontStyles.Bold;
+            Stretch(coinsText.rectTransform);
+            coinsText.rectTransform.offsetMin = new Vector2(104f, 0f);
+
+            TextMeshProUGUI distanceText = CreateText(running, "DistanceText", "0 m", 44f, TextAlignmentOptions.Left);
+            distanceText.alpha = 0.85f;
+            Place(distanceText.rectTransform, new Vector2(0f, 1f), new Vector2(300f, 60f), new Vector2(52f, -164f));
+
+            TextMeshProUGUI scoreText = CreateText(running, "ScoreText", "0", 104f, TextAlignmentOptions.Top);
+            scoreText.fontStyle = FontStyles.Bold;
+            AnchorTop(scoreText.rectTransform, new Vector2(600f, 130f), -40f);
+
+            Image multiplierBadge = CreateImage(running, "MultiplierBadge", RoundedSprite, Gold);
+            AnchorTop(multiplierBadge.rectTransform, new Vector2(170f, 84f), -178f);
+
+            TextMeshProUGUI multiplierText = CreateText(multiplierBadge.rectTransform, "MultiplierText", "x2", 56f,
+                TextAlignmentOptions.Center);
+            multiplierText.fontStyle = FontStyles.Bold;
+            multiplierText.color = Ink;
+            Stretch(multiplierText.rectTransform);
+            multiplierBadge.gameObject.SetActive(false);
+
+            Button pauseButton = CreateButton(running, "PauseButton", "II", CircleSprite, Pill, Color.white, 56f);
+            Place(pauseButton.GetComponent<RectTransform>(), new Vector2(1f, 1f), new Vector2(112f, 112f), new Vector2(-36f, -48f));
+
+            // ---- Title ----
             GameObject readyPanel = CreatePanel(canvasRect, "ReadyPanel", new Color(0f, 0f, 0f, 0.35f));
-            TextMeshProUGUI readyText = CreateText(readyPanel.GetComponent<RectTransform>(), "ReadyText",
-                "TAP OR PRESS A KEY", 70f, TextAlignmentOptions.Center);
-            AnchorCentre(readyText.rectTransform, new Vector2(900f, 200f), 0f);
+            RectTransform ready = readyPanel.GetComponent<RectTransform>();
 
-            GameObject gameOverPanel = CreatePanel(canvasRect, "GameOverPanel", new Color(0f, 0f, 0f, 0.65f));
-            RectTransform gameOverRect = gameOverPanel.GetComponent<RectTransform>();
+            TextMeshProUGUI title = CreateText(ready, "Title", GameTitle, 170f, TextAlignmentOptions.Center);
+            title.fontStyle = FontStyles.Bold;
+            title.color = Gold;
+            AnchorCentre(title.rectTransform, new Vector2(1000f, 220f), 520f);
 
-            TextMeshProUGUI gameOverText = CreateText(gameOverRect, "GameOverText", "GAME OVER", 90f, TextAlignmentOptions.Center);
-            AnchorCentre(gameOverText.rectTransform, new Vector2(900f, 180f), 220f);
+            TextMeshProUGUI tagline = CreateText(ready, "Tagline", "Run the city. Climb the traffic.", 50f,
+                TextAlignmentOptions.Center);
+            tagline.alpha = 0.9f;
+            AnchorCentre(tagline.rectTransform, new Vector2(1000f, 80f), 380f);
 
-            TextMeshProUGUI finalScoreText = CreateText(gameOverRect, "FinalScoreText", "0", 120f, TextAlignmentOptions.Center);
-            AnchorCentre(finalScoreText.rectTransform, new Vector2(900f, 200f), 40f);
+            Image howToCard = CreateImage(ready, "HowTo", RoundedSprite, new Color(0f, 0f, 0f, 0.5f));
+            AnchorCentre(howToCard.rectTransform, new Vector2(860f, 330f), -20f);
 
-            Button restartButton = CreateButton(gameOverRect, "RestartButton", "RESTART");
-            AnchorCentre(restartButton.GetComponent<RectTransform>(), new Vector2(460f, 140f), -200f);
+            TextMeshProUGUI howTo = CreateText(howToCard.rectTransform, "HowToText",
+                "SWIPE LEFT / RIGHT  -  change lane\nSWIPE UP or TAP  -  jump\nSWIPE DOWN  -  roll",
+                44f, TextAlignmentOptions.Center);
+            howTo.lineSpacing = 30f;
+            Stretch(howTo.rectTransform);
+
+            TextMeshProUGUI keyboardHint = CreateText(ready, "KeyboardHint",
+                "Keyboard: arrows or WASD, Space to jump, Esc to pause", 34f, TextAlignmentOptions.Center);
+            keyboardHint.alpha = 0.7f;
+            AnchorCentre(keyboardHint.rectTransform, new Vector2(1000f, 60f), -250f);
+
+            TextMeshProUGUI readyBest = CreateText(ready, "BestText", "BEST  0", 56f, TextAlignmentOptions.Center);
+            readyBest.fontStyle = FontStyles.Bold;
+            readyBest.color = Gold;
+            AnchorCentre(readyBest.rectTransform, new Vector2(800f, 90f), -400f);
+            readyBest.gameObject.SetActive(false);
+
+            TextMeshProUGUI readyPrompt = CreateText(ready, "Prompt", "TAP TO RUN", 76f, TextAlignmentOptions.Center);
+            readyPrompt.fontStyle = FontStyles.Bold;
+            AnchorCentre(readyPrompt.rectTransform, new Vector2(900f, 120f), -620f);
+
+            // ---- Pause ----
+            GameObject pausePanel = CreatePanel(canvasRect, "PausePanel", new Color(0f, 0f, 0f, 0.6f));
+            Image pauseCard = CreateImage(pausePanel.GetComponent<RectTransform>(), "Card", RoundedSprite, Card);
+            AnchorCentre(pauseCard.rectTransform, new Vector2(760f, 640f), 0f);
+
+            TextMeshProUGUI pausedText = CreateText(pauseCard.rectTransform, "PausedText", "PAUSED", 100f,
+                TextAlignmentOptions.Center);
+            pausedText.fontStyle = FontStyles.Bold;
+            AnchorCentre(pausedText.rectTransform, new Vector2(700f, 140f), 200f);
+
+            Button resumeButton = CreateButton(pauseCard.rectTransform, "ResumeButton", "RESUME", RoundedSprite, Go, Ink, 60f);
+            AnchorCentre(resumeButton.GetComponent<RectTransform>(), new Vector2(520f, 140f), 20f);
+
+            Button pauseRestartButton = CreateButton(pauseCard.rectTransform, "RestartButton", "RESTART", RoundedSprite,
+                Neutral, Ink, 60f);
+            AnchorCentre(pauseRestartButton.GetComponent<RectTransform>(), new Vector2(520f, 140f), -170f);
+
+            // ---- Game over ----
+            GameObject gameOverPanel = CreatePanel(canvasRect, "GameOverPanel", new Color(0f, 0f, 0f, 0.7f));
+            Image gameOverCard = CreateImage(gameOverPanel.GetComponent<RectTransform>(), "Card", RoundedSprite, Card);
+            AnchorCentre(gameOverCard.rectTransform, new Vector2(880f, 1180f), 0f);
+            RectTransform card = gameOverCard.rectTransform;
+
+            TextMeshProUGUI gameOverText = CreateText(card, "GameOverText", "RUN OVER", 90f, TextAlignmentOptions.Center);
+            gameOverText.fontStyle = FontStyles.Bold;
+            AnchorCentre(gameOverText.rectTransform, new Vector2(800f, 130f), 470f);
+
+            TextMeshProUGUI scoreLabel = CreateText(card, "ScoreLabel", "SCORE", 40f, TextAlignmentOptions.Center);
+            scoreLabel.alpha = 0.7f;
+            AnchorCentre(scoreLabel.rectTransform, new Vector2(600f, 60f), 340f);
+
+            TextMeshProUGUI finalScoreText = CreateText(card, "FinalScoreText", "0", 160f, TextAlignmentOptions.Center);
+            finalScoreText.fontStyle = FontStyles.Bold;
+            finalScoreText.color = Gold;
+            AnchorCentre(finalScoreText.rectTransform, new Vector2(800f, 190f), 220f);
+
+            Image newBestBadge = CreateImage(card, "NewBestBadge", RoundedSprite, Alert);
+            AnchorCentre(newBestBadge.rectTransform, new Vector2(360f, 80f), 90f);
+
+            TextMeshProUGUI newBestText = CreateText(newBestBadge.rectTransform, "Label", "NEW BEST!", 48f,
+                TextAlignmentOptions.Center);
+            newBestText.fontStyle = FontStyles.Bold;
+            Stretch(newBestText.rectTransform);
+            newBestBadge.gameObject.SetActive(false);
+
+            TextMeshProUGUI finalCoinsText = CreateStatRow(card, "Coins", "COINS", -60f);
+            TextMeshProUGUI finalDistanceText = CreateStatRow(card, "Distance", "DISTANCE", -150f);
+            TextMeshProUGUI finalBestText = CreateStatRow(card, "Best", "BEST", -240f);
+
+            Button restartButton = CreateButton(card, "RestartButton", "RUN AGAIN", RoundedSprite, Go, Ink, 64f);
+            AnchorCentre(restartButton.GetComponent<RectTransform>(), new Vector2(600f, 150f), -420f);
+
+            TextMeshProUGUI restartHint = CreateText(card, "RestartHint", "or press R", 34f, TextAlignmentOptions.Center);
+            restartHint.alpha = 0.6f;
+            AnchorCentre(restartHint.rectTransform, new Vector2(600f, 60f), -530f);
 
             HudController hud = canvasObject.AddComponent<HudController>();
 
             SerializedObject hudSerialized = new SerializedObject(hud);
+            SetReference(hudSerialized, "_runningRoot", runningRoot);
             SetReference(hudSerialized, "_scoreText", scoreText);
+            SetReference(hudSerialized, "_coinsText", coinsText);
+            SetReference(hudSerialized, "_distanceText", distanceText);
+            SetReference(hudSerialized, "_multiplierBadge", multiplierBadge.gameObject);
             SetReference(hudSerialized, "_multiplierText", multiplierText);
+            SetReference(hudSerialized, "_pauseButton", pauseButton);
             SetReference(hudSerialized, "_readyPanel", readyPanel);
+            SetReference(hudSerialized, "_readyBestText", readyBest);
+            SetReference(hudSerialized, "_readyPrompt", readyPrompt);
+            SetReference(hudSerialized, "_pausePanel", pausePanel);
+            SetReference(hudSerialized, "_resumeButton", resumeButton);
+            SetReference(hudSerialized, "_pauseRestartButton", pauseRestartButton);
             SetReference(hudSerialized, "_gameOverPanel", gameOverPanel);
             SetReference(hudSerialized, "_finalScoreText", finalScoreText);
+            SetReference(hudSerialized, "_finalCoinsText", finalCoinsText);
+            SetReference(hudSerialized, "_finalDistanceText", finalDistanceText);
+            SetReference(hudSerialized, "_finalBestText", finalBestText);
+            SetReference(hudSerialized, "_newBestBadge", newBestBadge.gameObject);
             SetReference(hudSerialized, "_restartButton", restartButton);
             hudSerialized.ApplyModifiedPropertiesWithoutUndo();
 
-            // GameManager binds the click in Awake, so the panel can start hidden.
+            // A touch that starts on any button is that button's, never a jump.
+            touchBlockers = new[]
+            {
+                pauseButton.GetComponent<RectTransform>(),
+                resumeButton.GetComponent<RectTransform>(),
+                pauseRestartButton.GetComponent<RectTransform>(),
+                restartButton.GetComponent<RectTransform>()
+            };
+
+            // GameManager binds the clicks in Awake, so these can start hidden.
+            runningRoot.SetActive(false);
+            pausePanel.SetActive(false);
             gameOverPanel.SetActive(false);
 
             return hud;
+        }
+
+        private static void WireInputBlockers(PlayerInputReader input, RectTransform[] blockers)
+        {
+            if (input == null)
+            {
+                Debug.LogError("No PlayerInputReader found — tapping a button will also jump.");
+                return;
+            }
+
+            SerializedObject serialized = new SerializedObject(input);
+            SerializedProperty property = serialized.FindProperty("_touchBlockers");
+            if (property == null)
+            {
+                Debug.LogError("PlayerInputReader has no _touchBlockers field — assign it by hand.");
+                return;
+            }
+
+            property.arraySize = blockers.Length;
+            for (int i = 0; i < blockers.Length; i++)
+            {
+                property.GetArrayElementAtIndex(i).objectReferenceValue = blockers[i];
+            }
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>Unity's built-in rounded, 9-sliced UI sprite. Ships with every project.</summary>
+        private static Sprite RoundedSprite => AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+
+        /// <summary>Unity's built-in circle sprite.</summary>
+        private static Sprite CircleSprite => AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
+
+        private static GameObject CreateGroup(RectTransform parent, string name)
+        {
+            GameObject group = new GameObject(name, typeof(RectTransform));
+            group.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform rect = group.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            Stretch(rect);
+            return group;
+        }
+
+        private static Image CreateImage(RectTransform parent, string name, Sprite sprite, Color color)
+        {
+            GameObject imageObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+            imageObject.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform rect = imageObject.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+
+            Image image = imageObject.GetComponent<Image>();
+            image.sprite = sprite;
+            image.type = sprite != null && sprite.border != Vector4.zero ? Image.Type.Sliced : Image.Type.Simple;
+            image.color = color;
+
+            // Decoration must not swallow the swipes and taps that drive the runner.
+            image.raycastTarget = false;
+            return image;
+        }
+
+        /// <summary>A label on the left, its value on the right. Returns the value text.</summary>
+        private static TextMeshProUGUI CreateStatRow(RectTransform parent, string name, string label, float y)
+        {
+            GameObject row = new GameObject(name + "Row", typeof(RectTransform));
+            row.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform rect = row.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            AnchorCentre(rect, new Vector2(640f, 80f), y);
+
+            TextMeshProUGUI labelText = CreateText(rect, "Label", label, 46f, TextAlignmentOptions.Left);
+            labelText.alpha = 0.75f;
+            Stretch(labelText.rectTransform);
+
+            TextMeshProUGUI valueText = CreateText(rect, "Value", "0", 52f, TextAlignmentOptions.Right);
+            valueText.fontStyle = FontStyles.Bold;
+            Stretch(valueText.rectTransform);
+
+            return valueText;
+        }
+
+        /// <summary>Anchors and pivots to the same corner, then offsets inward from it.</summary>
+        private static void Place(RectTransform rect, Vector2 corner, Vector2 size, Vector2 offset)
+        {
+            rect.anchorMin = corner;
+            rect.anchorMax = corner;
+            rect.pivot = corner;
+            rect.sizeDelta = size;
+            rect.anchoredPosition = offset;
         }
 
         private static void EnsureEventSystem()
@@ -361,7 +639,8 @@ namespace Runner.EditorTools
             return text;
         }
 
-        private static Button CreateButton(RectTransform parent, string name, string label)
+        private static Button CreateButton(
+            RectTransform parent, string name, string label, Sprite sprite, Color background, Color textColor, float fontSize)
         {
             GameObject buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
             buttonObject.layer = LayerMask.NameToLayer("UI");
@@ -369,10 +648,15 @@ namespace Runner.EditorTools
             RectTransform rect = buttonObject.GetComponent<RectTransform>();
             rect.SetParent(parent, false);
 
-            buttonObject.GetComponent<Image>().color = new Color(0.85f, 0.85f, 0.88f);
+            Image image = buttonObject.GetComponent<Image>();
+            image.sprite = sprite;
+            image.type = sprite != null && sprite.border != Vector4.zero ? Image.Type.Sliced : Image.Type.Simple;
+            image.color = background;
 
-            TextMeshProUGUI text = CreateText(rect, "Label", label, 60f, TextAlignmentOptions.Center);
-            text.color = Color.black;
+            TextMeshProUGUI text = CreateText(rect, "Label", label, fontSize, TextAlignmentOptions.Center);
+            text.fontStyle = FontStyles.Bold;
+            text.color = textColor;
+            text.raycastTarget = false;
             Stretch(text.rectTransform);
 
             return buttonObject.GetComponent<Button>();

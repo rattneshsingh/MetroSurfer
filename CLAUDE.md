@@ -4,7 +4,8 @@
 
 A 3-lane endless runner for **Android**, themed around Indian states. Each state
 (Delhi, Punjab, Kerala, ...) is a distinct visual + audio theme sharing one
-gameplay core. Solo developer, evenings only. Currently in **Phase 0**.
+gameplay core. Solo developer, evenings only. Currently in **Phase 1** (see
+"Phase 1 scope" at the bottom; Phase 0 gameplay core is complete).
 
 Working title: `RUNNER` — rename throughout when the real name is picked.
 
@@ -117,14 +118,26 @@ Write the code, then state exactly which Editor steps are needed to hook it up.
 - When a perf rule and a readability preference conflict in a hot path, perf
   wins — and say so in a comment.
 
-## Phase 0 scope (current)
+## Phase 0 scope (done)
 
-Grey cubes only. **No art, no audio, no meta systems, no ads, no state theming.**
-
-In scope: 3 lanes, swipe/keyboard input, jump, slide, pooled obstacle and coin
+Grey cubes: 3 lanes, swipe/keyboard input, jump, slide, pooled obstacle and coin
 spawning, procedural segment generation, collision + death, score, restart,
 speed ramp.
 
-Out of scope until Phase 0 passes its "is it fun as cubes?" gate: characters,
-progression, shop, missions, IAP, ads, Firebase, state select, Addressables
-content loading (build the `StateConfig` seam now, populate it later).
+## Phase 1 scope (current): Delhi vertical slice
+
+Make one state look and feel like a finished game, as a playable portfolio piece.
+
+In scope: full UI (title, HUD, pause, game over, best score), an animated runner
+character, vehicle and train models, a scrolling Delhi environment, basic audio.
+Art goes through the existing seams — `ObstacleDefinition.Prefab`, the player's
+`_visual`, and `StateConfig` — never by hardcoding Delhi into gameplay code.
+
+Art rules:
+- Only CC0 or CC-BY assets (Kenney, Quaternius, Mixamo, Sketchfab filtered by
+  licence). Record every third-party asset and its licence in `CREDITS.md`.
+- Original look only. Nothing that copies or imitates another game's characters,
+  logo, name or art.
+
+Still out of scope: progression, shop, missions, IAP, ads, Firebase, state
+select, Addressables content loading.

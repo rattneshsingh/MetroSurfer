@@ -55,6 +55,8 @@ namespace Runner.Core
         private PursuitState _pursuit;
         private float _rearmTimer;
         private float _speedPenalty;
+        private int _coins;
+        private BestScore _best;
 
         public GameState State => _gameState;
         public int Score => _scoring == null ? 0 : _scoring.Score;
@@ -82,6 +84,9 @@ namespace Runner.Core
         {
             Application.targetFrameRate = _targetFrameRate;
             QualitySettings.vSyncCount = 0;
+
+            // Pause works by freezing time. Never inherit a frozen clock from a previous run.
+            Time.timeScale = 1f;
 
             EnsureInitialized();
         }
@@ -129,14 +134,21 @@ namespace Runner.Core
                     _player != null ? _player.Jump : default);
             }
 
+            if (_best == null)
+            {
+                _best = new BestScore();
+            }
+
             if (_hud != null)
             {
-                _hud.BindRestart(Restart);
+                _hud.Bind(Restart, Pause, Resume);
             }
         }
 
         private void OnDestroy()
         {
+            Time.timeScale = 1f;
+
             if (_playerCollision != null)
             {
                 _playerCollision.Hit -= OnPlayerHit;
@@ -171,11 +183,76 @@ namespace Runner.Core
                 case GameState.Dead:
                     TickDead();
                     break;
+
+                case GameState.Paused:
+                    TickPaused();
+                    break;
+            }
+        }
+
+        /// <summary>A phone call or the home button mid-run should never cost the run.</summary>
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused)
+            {
+                Pause();
+            }
+        }
+
+#if !UNITY_EDITOR
+        // Desktop and browser: switching away pauses too. Skipped in the Editor, where clicking
+        // the Inspector to tune a value would otherwise pause the game every time.
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused)
+            {
+                Pause();
+            }
+        }
+#endif
+
+        public void Pause()
+        {
+            if (_gameState != GameState.Playing)
+            {
+                return;
+            }
+
+            _gameState = GameState.Paused;
+            Time.timeScale = 0f;
+
+            if (_hud != null)
+            {
+                _hud.ShowPaused();
+            }
+        }
+
+        public void Resume()
+        {
+            if (_gameState != GameState.Paused)
+            {
+                return;
+            }
+
+            _gameState = GameState.Playing;
+            Time.timeScale = 1f;
+
+            // Whatever the finger was doing on the pause menu is not a gesture.
+            if (_input != null)
+            {
+                _input.ResetGesture();
+            }
+
+            if (_hud != null)
+            {
+                _hud.ShowPlaying();
             }
         }
 
         public void Restart()
         {
+            Time.timeScale = 1f;
+            _coins = 0;
             _distance = 0f;
             _speed = _difficulty.StartSpeed;
             _scoring.Reset();
@@ -235,6 +312,12 @@ namespace Runner.Core
 
         private void TickPlaying()
         {
+            if (PausePressed())
+            {
+                Pause();
+                return;
+            }
+
             float dt = Time.deltaTime;
 
             // The dip decays back to full speed rather than snapping, so recovering from a
@@ -249,12 +332,38 @@ namespace Runner.Core
                 _spawner.Tick(dt, _speed, _distance);
             }
 
-            if (_scoring.Tick(_distance) && _hud != null)
+            if (_hud != null)
             {
-                _hud.SetMultiplier(_scoring.Multiplier);
+                // Integer metres: the HUD early-outs until the number on screen changes.
+                _hud.SetDistance((int)_distance);
+
+                if (_scoring.Tick(_distance))
+                {
+                    _hud.SetMultiplier(_scoring.Multiplier);
+                }
+            }
+            else
+            {
+                _scoring.Tick(_distance);
             }
 
             TickPursuit(dt);
+        }
+
+        private void TickPaused()
+        {
+            if (PausePressed())
+            {
+                Resume();
+            }
+        }
+
+        /// <summary>Escape or P. Named key controls are cached: no lookup, no allocation.</summary>
+        private static bool PausePressed()
+        {
+            Keyboard keyboard = Keyboard.current;
+            return keyboard != null &&
+                   (keyboard.escapeKey.wasPressedThisFrame || keyboard.pKey.wasPressedThisFrame);
         }
 
         /// <summary>
@@ -290,9 +399,15 @@ namespace Runner.Core
             {
                 _deathTimer -= Time.deltaTime;
 
-                if (_deathTimer <= 0f && _hud != null)
+                if (_deathTimer <= 0f)
                 {
-                    _hud.ShowGameOver(Score);
+                    // Submitted once, when the run is final: the only PlayerPrefs write.
+                    bool isNewBest = _best.Submit(Score);
+
+                    if (_hud != null)
+                    {
+                        _hud.ShowGameOver(Score, _coins, (int)_distance, _best.Value, isNewBest);
+                    }
                 }
 
                 // Input is ignored during the death beat on purpose — restarting mid-freeze
@@ -320,8 +435,10 @@ namespace Runner.Core
             if (_hud != null)
             {
                 _hud.SetScore(Score);
+                _hud.SetCoins(_coins);
+                _hud.SetDistance(0);
                 _hud.SetMultiplier(Multiplier);
-                _hud.ShowReady();
+                _hud.ShowReady(_best.Value);
             }
         }
 
@@ -379,10 +496,12 @@ namespace Runner.Core
             // than the same coin on the street.
             float height = _player == null ? 0f : _player.SupportHeight;
             _scoring.Collect(value, height, _distance);
+            _coins++;
 
             if (_hud != null)
             {
                 _hud.SetScore(_scoring.Score);
+                _hud.SetCoins(_coins);
                 _hud.SetMultiplier(_scoring.Multiplier);
             }
         }

@@ -36,6 +36,11 @@ namespace Runner.Player
         [Header("Keyboard")]
         [SerializeField] private bool _keyboardEnabled = true;
 
+        [Header("UI")]
+        [Tooltip("A touch that starts inside one of these is a button press, not a gesture. " +
+                 "Without this, tapping Pause would also jump, because a tap is a jump.")]
+        [SerializeField] private RectTransform[] _touchBlockers;
+
         private PlayerCommand _cached;
         private int _cachedFrame = -1;
 
@@ -123,9 +128,12 @@ namespace Runner.Player
 
             if (touch.press.wasPressedThisFrame)
             {
-                _touchActive = true;
+                Vector2 start = touch.position.ReadValue();
+
+                // The whole gesture belongs to the button it started on, release included.
+                _touchActive = !StartsOnBlocker(start);
                 _swipeResolved = false;
-                _touchStart = touch.position.ReadValue();
+                _touchStart = start;
                 _touchStartTime = Time.unscaledTime;
                 return PlayerCommand.None;
             }
@@ -172,6 +180,30 @@ namespace Runner.Player
             }
 
             return delta.y > 0f ? PlayerCommand.Jump : PlayerCommand.Slide;
+        }
+
+        /// <summary>Indexed loop over a serialized array: no allocation on the touch path.</summary>
+        private bool StartsOnBlocker(Vector2 screenPoint)
+        {
+            if (_touchBlockers == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _touchBlockers.Length; i++)
+            {
+                RectTransform blocker = _touchBlockers[i];
+
+                // Null camera: the HUD is a screen-space overlay canvas.
+                if (blocker != null &&
+                    blocker.gameObject.activeInHierarchy &&
+                    RectTransformUtility.RectangleContainsScreenPoint(blocker, screenPoint, null))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

@@ -8,6 +8,9 @@ namespace Runner.Core
         Playing = 1,
 
         /// <summary>Hit something. Frozen for the death beat, then restartable.</summary>
-        Dead = 2
+        Dead = 2,
+
+        /// <summary>Mid-run and frozen by the player or by the app losing focus.</summary>
+        Paused = 3
     }
 }
