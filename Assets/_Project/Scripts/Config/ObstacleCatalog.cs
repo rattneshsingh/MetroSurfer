@@ -140,8 +140,10 @@ namespace Runner.Config
                 },
                 new ObstacleDefinition
                 {
+                    // Exactly one row long, so trucks in consecutive rows meet nose to tail and
+                    // a convoy's roofs form one continuous road with no gaps underfoot.
                     Kind = ObstacleKind.Truck, Form = ObstacleForm.Landable,
-                    Size = new Vector3(1.8f, 1.2f, 4.6f)
+                    Size = new Vector3(1.8f, 1.2f, 5f)
                 },
                 new ObstacleDefinition
                 {

@@ -43,11 +43,23 @@ namespace Runner.Spawning
                  "coins. Gives time to settle before the first thing to react to.")]
         [SerializeField] private float _startRunway = 25f;
 
-        [Tooltip("Z behind the player at which obstacles stop being drawn. Keeps a bar you just " +
-                 "rolled under from filling the camera and hiding what is coming next.")]
+        [Tooltip("Z behind the player at which ground obstacles stop being drawn, once their far " +
+                 "end has passed it.")]
         [SerializeField] private float _obstacleCullZ = -1f;
 
+        [Tooltip("Z at which overhead obstacles (bars to roll under, low bridges) stop being drawn. " +
+                 "At the player, because the chase camera looks back through anything above the " +
+                 "runner's head the moment they pass under it, and the bar fills the screen.")]
+        [SerializeField] private float _overheadCullZ = 0f;
+
         [SerializeField] private float _trackSidePadding = 1.2f;
+
+        [Header("Lane markings")]
+        [Tooltip("Dashed lines between lanes, so which lane you are in can be read at a glance.")]
+        [SerializeField] private Color _laneMarkingColor = new Color(0.92f, 0.92f, 0.86f);
+        [SerializeField] private float _laneMarkingWidth = 0.12f;
+        [SerializeField] private float _dashLength = 2.5f;
+        [SerializeField] private float _dashGap = 2.5f;
         [SerializeField] private float _floorThickness = 0.5f;
 
         [Header("Generation")]
@@ -136,6 +148,13 @@ namespace Runner.Spawning
         private readonly PitHole[] _pitsLastRow = new PitHole[LaneCount];
 
         private Material _groundMaterial;
+        private Material _laneMarkingMaterial;
+
+        /// <summary>
+        /// Top of a lane dash. Above the road so it never z-fights it, below a pit's depth cutter
+        /// (5 mm) so dashes do not float across holes.
+        /// </summary>
+        private const float DashTop = 0.003f;
 
         private int _obstacleLayer;
         private int _coinLayer;
@@ -193,6 +212,7 @@ namespace Runner.Spawning
             _poolRoot.SetParent(transform, false);
 
             _groundMaterial = PrimitiveFactory.CreateSharedMaterial(_groundColor, "M_Ground");
+            _laneMarkingMaterial = PrimitiveFactory.CreateSharedMaterial(_laneMarkingColor, "M_LaneMarking");
             BuildCollaborators();
 
             // Optional: a state without scenery keeps the bare Phase 0 track.
@@ -318,12 +338,15 @@ namespace Runner.Spawning
             {
                 float segmentZ = _segmentTransforms[i].localPosition.z;
 
-                if (segmentZ > _obstacleCullZ || segmentZ + _segmentLength < _obstacleCullZ)
+                // Only segments straddling either cull line can have something to hide.
+                float nearestLine = Mathf.Min(_obstacleCullZ, _overheadCullZ);
+                float furthestLine = Mathf.Max(_obstacleCullZ, _overheadCullZ);
+                if (segmentZ > furthestLine || segmentZ + _segmentLength < nearestLine)
                 {
                     continue;
                 }
 
-                _segments[i].HideObstaclesBehind(_obstacleCullZ - segmentZ);
+                _segments[i].HideObstaclesBehind(_obstacleCullZ - segmentZ, _overheadCullZ - segmentZ);
             }
         }
 
@@ -514,6 +537,7 @@ namespace Runner.Spawning
             // Materials are created with `new Material(...)` at warm-up, so nothing else owns
             // them. Without this Unity reports leaked material instances on scene unload.
             ObjectUtility.Destroy(_groundMaterial);
+            ObjectUtility.Destroy(_laneMarkingMaterial);
             _obstacles?.Dispose();
             _coins?.Dispose();
         }
@@ -625,9 +649,38 @@ namespace Runner.Spawning
             floor.transform.SetParent(root.transform, false);
             floor.transform.localPosition = new Vector3(0f, -_floorThickness * 0.5f, _segmentLength * 0.5f);
 
+            AddLaneMarkings(root.transform);
             _scenery?.Dress(root.transform);
 
             return root.AddComponent<Segment>();
+        }
+
+        /// <summary>
+        /// Dashes on each line between lanes, built once per segment at warm-up. They scroll and
+        /// recycle with it, so they cost nothing per frame. Visual only: no colliders.
+        /// </summary>
+        private void AddLaneMarkings(Transform segment)
+        {
+            float pitch = _dashLength + _dashGap;
+            if (_laneMarkingMaterial == null || _dashLength <= 0f || pitch <= 0f)
+            {
+                return;
+            }
+
+            for (int lane = 0; lane < LaneCount - 1; lane++)
+            {
+                float x = LaneToX(lane) + _laneWidth * 0.5f;
+
+                for (float z = 0f; z + _dashLength <= _segmentLength + 0.001f; z += pitch)
+                {
+                    GameObject dash = PrimitiveFactory.CreateCube(
+                        "LaneDash", new Vector3(_laneMarkingWidth, DashTop, _dashLength), _laneMarkingMaterial,
+                        segment.gameObject.layer, PrimitiveFactory.ColliderMode.None, castShadows: false);
+
+                    dash.transform.SetParent(segment, false);
+                    dash.transform.localPosition = new Vector3(x, DashTop * 0.5f, z + _dashLength * 0.5f);
+                }
+            }
         }
 
         /// <summary>Road surface width: the lanes plus padding on each side.</summary>

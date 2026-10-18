@@ -23,6 +23,8 @@ namespace Runner.Spawning
         private Renderer _renderer;
         private MovingObstacle _drift;
         private PitHole _pit;
+        private float _farEdge;
+        private bool _overhead;
         private Material _defaultMaterial;
         private bool _hidden;
 
@@ -34,13 +36,29 @@ namespace Runner.Spawning
         /// <summary>The visible hole, on pits only. Cached at warm-up so placement never searches.</summary>
         public PitHole Pit => _pit;
 
+        /// <summary>Metres from this obstacle's position to its far end. See <see cref="Initialize"/>.</summary>
+        public float FarEdge => _farEdge;
+
+        /// <summary>Passed under rather than around or over. See <see cref="Initialize"/>.</summary>
+        public bool IsOverhead => _overhead;
+
         /// <summary>
         /// Called once at pool warm-up. Explicit rather than relying on Awake, because a
         /// generated instance has its component added after the GameObject already exists.
         /// </summary>
-        public void Initialize(ObstacleKind kind)
+        /// <param name="farEdge">
+        /// How far ahead of its own position this obstacle reaches, in metres. A ramp starts at
+        /// its position and runs forward; a truck is centred on it. Hiding waits for this edge.
+        /// </param>
+        /// <param name="overhead">
+        /// True for anything the runner passes under. Hidden as soon as it is passed, so the
+        /// chase camera never has to look back through it.
+        /// </param>
+        public void Initialize(ObstacleKind kind, float farEdge = 0f, bool overhead = false)
         {
             _kind = kind;
+            _farEdge = farEdge;
+            _overhead = overhead;
             _visible = CollectVisibleRenderers();
             _renderer = _visible.Length > 0 ? _visible[0] : null;
             _drift = GetComponent<MovingObstacle>();

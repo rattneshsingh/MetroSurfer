@@ -62,10 +62,21 @@ namespace Runner.Spawning
         }
 
         /// <summary>
-        /// Hides anything already past the cull line. Local Z is cached at spawn time so this
-        /// never touches a Transform — it runs every frame on the segment straddling the line.
+        /// Hides anything whose far end is already past the cull line. Local Z is cached at
+        /// spawn time so this never touches a Transform — it runs every frame on the segment
+        /// straddling the line.
         /// </summary>
-        public void HideObstaclesBehind(float localCullZ)
+        /// <remarks>
+        /// The far end, not the position: a ramp starts at its position and runs three metres
+        /// forward, and a truck is centred on it, so testing the position hid ramps mid-climb and
+        /// truck roofs from under the runner's feet.
+        /// </remarks>
+        /// <param name="localCullZ">Ground obstacles hide once their far end is past this.</param>
+        /// <param name="localOverheadCullZ">
+        /// Overhead obstacles hide once their centre is past this — as the runner passes under
+        /// them, before the chase camera has to look back through them.
+        /// </param>
+        public void HideObstaclesBehind(float localCullZ, float localOverheadCullZ)
         {
             for (int i = 0; i < _obstacleCount; i++)
             {
@@ -77,7 +88,11 @@ namespace Runner.Spawning
                     ? obstacle.transform.localPosition.z
                     : _obstacleLocalZ[i];
 
-                if (z < localCullZ)
+                bool passed = obstacle.IsOverhead
+                    ? z < localOverheadCullZ
+                    : z + obstacle.FarEdge < localCullZ;
+
+                if (passed)
                 {
                     obstacle.Hide();
                 }

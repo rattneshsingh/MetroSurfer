@@ -51,9 +51,32 @@ namespace Runner.EditorTools
         /// <summary>Camera background and fog share this, so the horizon has no visible seam.</summary>
         private static readonly Color SkyColor = new Color(0.45f, 0.52f, 0.60f);
 
-        [MenuItem("Runner/Build Phase 0 Scene", priority = 0)]
+        /// <summary>
+        /// Rebuilds Run.unity from nothing and then runs every setup step, so the result is the
+        /// whole game — Delhi, the runner, the pursuer — not a bare Phase 0 track. Tuning assets
+        /// are reused, so tuned values survive.
+        /// </summary>
+        [MenuItem("Runner/Rebuild Whole Scene From Scratch", priority = 0)]
         public static void Build()
         {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("Stop Play mode first — changes made while playing are thrown away.");
+                return;
+            }
+
+            if (!EditorUtility.DisplayDialog(
+                    "Rebuild the whole scene?",
+                    "This replaces " + ScenePath + " with a freshly built scene, then sets up Delhi, " +
+                    "the runner and the pursuer again.\n\nHand-made changes to the scene itself " +
+                    "(camera, lighting, moved objects) are lost. Tuning assets are kept.\n\n" +
+                    "For UI changes only, use Runner > Rebuild HUD instead.",
+                    "Rebuild",
+                    "Cancel"))
+            {
+                return;
+            }
+
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
             {
                 return;
@@ -97,6 +120,12 @@ namespace Runner.EditorTools
             // Silences the unused-variable warning while keeping the out param documented as
             // part of the build contract.
             _ = playerCollision;
+
+            // The bare scene is only the skeleton. Put the game back on it, in dependency order:
+            // the state first, then the characters that stand in it.
+            DelhiStateSetup.SetUp();
+            RunnerCharacterSetup.SetUp();
+            RunnerCharacterSetup.SetUpPursuer();
         }
 
         private static void EnsureLayers()

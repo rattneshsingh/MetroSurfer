@@ -10,7 +10,7 @@ namespace Runner.Config
     public sealed class ObstacleTable : ScriptableObject
     {
         /// <summary>Bumped whenever the built-in defaults change.</summary>
-        public const int CurrentDefaultsVersion = 4;
+        public const int CurrentDefaultsVersion = 5;
 
         [HideInInspector]
         [SerializeField] private int _defaultsVersion;
@@ -228,7 +228,10 @@ namespace Runner.Config
             };
 
             _defaultsVersion = CurrentDefaultsVersion;
-            _formationChance = 0.9f;
+
+            // Nearly everything comes from designed chunks; random single obstacles are the
+            // seasoning, not the meal.
+            _formationChance = 0.95f;
 
             // Chunks, not obstacles. Each one is a small designed experience with a shape: a
             // demand, a beat to react in, and a resolution. Difficulty decides when it appears,
@@ -351,6 +354,63 @@ namespace Runner.Config
                 Chunk("Wall of ramps", 1.0f, 0.35f, TrackState.Street, TrackState.Elevated,
                     Row(All, ObstacleKind.Ramp),
                     RowCoins(All, ObstacleKind.Truck)),
+
+                // ---- Convoys. Trucks nose to tail turn the roofs into a road you run along,
+                // rather than boxes you hop between. Weighted up: these give the track its
+                // shape, and a lane that holds a convoy for twenty metres can be read at a
+                // glance. Each ends on open road, so they exit on the street.
+                Chunk("Convoy", 1.6f, 0.30f, TrackState.Street, TrackState.Street,
+                    Row(0b010, ObstacleKind.Ramp),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    Clear(true)),
+
+                Chunk("Convoy, left", 1.3f, 0.30f, TrackState.Street, TrackState.Street,
+                    Row(0b001, ObstacleKind.Ramp),
+                    RowCoins(0b001, ObstacleKind.Truck),
+                    RowCoins(0b001, ObstacleKind.Truck),
+                    RowCoins(0b001, ObstacleKind.Truck),
+                    RowCoins(0b001, ObstacleKind.Truck),
+                    Clear(true)),
+
+                Chunk("Convoy, right", 1.3f, 0.30f, TrackState.Street, TrackState.Street,
+                    Row(0b100, ObstacleKind.Ramp),
+                    RowCoins(0b100, ObstacleKind.Truck),
+                    RowCoins(0b100, ObstacleKind.Truck),
+                    RowCoins(0b100, ObstacleKind.Truck),
+                    RowCoins(0b100, ObstacleKind.Truck),
+                    Clear(true)),
+
+                // Two convoys and an open middle: climb either side, or keep your nerve low.
+                Chunk("Twin convoys", 1.3f, 0.45f, TrackState.Street, TrackState.Street,
+                    Row(0b101, ObstacleKind.Ramp),
+                    RowCoins(0b101, ObstacleKind.Truck),
+                    RowCoins(0b101, ObstacleKind.Truck),
+                    RowCoins(0b101, ObstacleKind.Truck),
+                    RowCoins(0b101, ObstacleKind.Truck),
+                    Clear(true)),
+
+                Chunk("Long convoy", 1.0f, 0.55f, TrackState.Street, TrackState.Street,
+                    Row(0b010, ObstacleKind.Ramp),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    Clear(true)),
+
+                // A break in the convoy, with the coin arc saying the jump is makeable.
+                Chunk("Convoy with a gap", 1.0f, 0.60f, TrackState.Street, TrackState.Street,
+                    Row(0b010, ObstacleKind.Ramp),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    ArcRow(ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    RowCoins(0b010, ObstacleKind.Truck),
+                    Clear(true)),
 
                 // ---- Roof runs. Unreachable until something has taken you up. ----
                 Chunk("Rooftop run", 1.3f, 0.30f, TrackState.Elevated, TrackState.Elevated,

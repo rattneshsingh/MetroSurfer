@@ -24,7 +24,7 @@ namespace Runner.Config
         [Range(0, 2)] public int StartLane = 1;
 
         [Tooltip("Seconds to travel one lane. Lower is snappier. The single biggest feel value.")]
-        public float LaneSnapDuration = 0.14f;
+        public float LaneSnapDuration = 0.18f;
 
         [Tooltip("Eases the horizontal slide. Ends must sit at (0,0) and (1,1).")]
         public AnimationCurve LaneSnapEase = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);

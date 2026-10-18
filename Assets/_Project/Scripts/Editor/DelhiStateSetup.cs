@@ -34,7 +34,9 @@ namespace Runner.EditorTools
         {
             (ObstacleKind.High, new Color(1f, 0.80f, 0.12f), true),
             (ObstacleKind.Underpass, new Color(0.95f, 0.55f, 0.15f), true),
-            (ObstacleKind.Ramp, new Color(0.66f, 0.30f, 0.22f), false),
+            // Striped steel loading ramp: reads as part of the convoy, and the stripes show the
+            // slope from behind where a plain grey surface looked like a flat plate.
+            (ObstacleKind.Ramp, new Color(0.62f, 0.65f, 0.70f), true),
         };
 
         private static readonly string[] Buildings =
@@ -61,10 +63,14 @@ namespace Runner.EditorTools
         private static readonly (ObstacleKind Kind, string Model, float Yaw)[] Mapping =
         {
             (ObstacleKind.Train, TrainKit + "train-electric-subway-a.fbx", 0f),
-            (ObstacleKind.Truck, CarKit + "delivery.fbx", 0f),
+            // A bus has one flat roof end to end, so buses nose to tail read as a single long
+            // platform; a box truck's low cab broke every convoy into separate vehicles.
+            (ObstacleKind.Truck, Rgsdev + "Bus.fbx", 0f),
             (ObstacleKind.MovingTruck, CarKit + "garbage-truck.fbx", 0f),
             (ObstacleKind.OncomingTruck, CarKit + "truck.fbx", 180f),
-            (ObstacleKind.StoppingBus, Rgsdev + "Bus.fbx", 0f),
+            // Not a bus: convoy trucks are buses you can run along, and a hazard that brakes in
+            // your lane must never look like a platform that is safe to land on.
+            (ObstacleKind.StoppingBus, CarKit + "delivery.fbx", 0f),
             (ObstacleKind.Low, Roads + "construction-barrier.fbx", 0f),
             (ObstacleKind.Full, Roads + "construction-fence.fbx", 0f),
         };

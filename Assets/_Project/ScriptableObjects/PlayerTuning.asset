@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PlayerTuning
   m_EditorClassIdentifier: Runner::Runner.Config.PlayerTuning
   StartLane: 1
-  LaneSnapDuration: 0.14
+  LaneSnapDuration: 0.18
   LaneSnapEase:
     serializedVersion: 2
     m_Curve:

@@ -10,20 +10,22 @@ namespace Runner.Config
     public sealed class DifficultyCurve : ScriptableObject
     {
         [Header("Speed (metres/second)")]
-        [SerializeField] private float _startSpeed = 8f;
-        [SerializeField] private float _maxSpeed = 30f;
+        [SerializeField] private float _startSpeed = 10f;
+        [SerializeField] private float _maxSpeed = 16f;
 
-        [Tooltip("Metres over which speed climbs from start to max. Tuned so the first minute " +
-                 "is a warm-up: around 600m -- roughly a minute of play -- the pace reaches the " +
-                 "speed the game is really pitched at, and keeps climbing from there.")]
-        [SerializeField] private float _rampDistance = 1800f;
+        [Tooltip("Metres over which speed climbs from start to max. Deliberately long and " +
+                 "gentle: the pace should feel fast from the first second and stay readable, " +
+                 "with difficulty coming from obstacle patterns rather than raw speed.")]
+        [SerializeField] private float _rampDistance = 3000f;
 
         [Tooltip("Normalised distance (x) to normalised speed (y).")]
         [SerializeField] private AnimationCurve _speedOverDistance = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
-        [Header("Obstacle density (chance a given row spawns something)")]
-        [SerializeField, Range(0f, 1f)] private float _startObstacleDensity = 0.55f;
-        [SerializeField, Range(0f, 1f)] private float _maxObstacleDensity = 0.92f;
+        [Header("Obstacle density (chance a given row starts something)")]
+        [Tooltip("Low on purpose: most of what starts is a multi-row chunk, so a little density " +
+                 "fills a lot of track. Open road between chunks is what makes them readable.")]
+        [SerializeField, Range(0f, 1f)] private float _startObstacleDensity = 0.30f;
+        [SerializeField, Range(0f, 1f)] private float _maxObstacleDensity = 0.60f;
         [SerializeField] private AnimationCurve _obstacleDensityOverDistance = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("Coins")]

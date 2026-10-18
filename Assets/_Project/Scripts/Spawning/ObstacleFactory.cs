@@ -26,7 +26,6 @@ namespace Runner.Spawning
 
         private readonly ObjectPool<Obstacle>[] _poolsByKind;
         private readonly Material _obstacleMaterial;
-        private readonly Material _pitMaterial;
         private readonly Material _brakeMaterial;
 
         /// <summary>One shared material per painted kind, made the first time that kind is built.</summary>
@@ -75,7 +74,6 @@ namespace Runner.Spawning
             _state = state;
 
             _obstacleMaterial = PrimitiveFactory.CreateSharedMaterial(settings.ObstacleColor, "M_Obstacle");
-            _pitMaterial = PrimitiveFactory.CreateSharedMaterial(settings.PitColor, "M_Pit");
             _brakeMaterial = PrimitiveFactory.CreateSharedMaterial(settings.BrakeColor, "M_Brake");
 
             _holeWallMaterial = PrimitiveFactory.CreateSharedMaterial(HoleWallColor, "M_PitWall");
@@ -139,7 +137,6 @@ namespace Runner.Spawning
         public void Dispose()
         {
             ObjectUtility.Destroy(_obstacleMaterial);
-            ObjectUtility.Destroy(_pitMaterial);
             ObjectUtility.Destroy(_brakeMaterial);
             ObjectUtility.Destroy(_holeCutterMaterial);
             ObjectUtility.Destroy(_holeWallMaterial);
@@ -261,7 +258,12 @@ namespace Runner.Spawning
                 obstacle.gameObject.AddComponent<MovingObstacle>().Initialize();
             }
 
-            obstacle.Initialize(definition.Kind);
+            // A ramp starts at its position and climbs forward; everything else is centred on it.
+            float farEdge = definition.Form == ObstacleForm.Ramp ? definition.RampRun : definition.Size.z * 0.5f;
+
+            // A barrier raised off the road is one you pass under: overhead bars, low bridges.
+            bool overhead = definition.Form == ObstacleForm.Barrier && definition.BaseHeight > 0f;
+            obstacle.Initialize(definition.Kind, farEdge, overhead);
             return obstacle;
         }
 
@@ -281,7 +283,41 @@ namespace Runner.Spawning
             body.transform.localPosition = new Vector3(
                 0f, definition.BaseHeight + definition.Size.y * 0.5f, 0f);
 
+            if (definition.BaseHeight > 0f)
+            {
+                AddLegs(root, definition);
+            }
+
             return root.AddComponent<Obstacle>();
+        }
+
+        /// <summary>Above this width a raised barrier is a bridge, and gets pillars rather than posts.</summary>
+        private const float BridgeWidth = 3f;
+
+        /// <summary>
+        /// Something to stand a raised barrier on, so it reads as a hurdle or a bridge rather
+        /// than a slab floating in the air: thin posts under a lane bar, pillars under a bridge.
+        /// Visual only — no colliders — and inside the barrier's own width, so the space the
+        /// runner rolls through is exactly what it was.
+        /// </summary>
+        private void AddLegs(GameObject root, ObstacleDefinition definition)
+        {
+            bool bridge = definition.Size.x > BridgeWidth;
+            float thickness = bridge ? 0.5f : 0.12f;
+            float depth = definition.Size.z * (bridge ? 0.8f : 0.5f);
+            float x = definition.Size.x * 0.5f - thickness * 0.5f;
+            float height = definition.BaseHeight;
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject leg = PrimitiveFactory.CreateCube(
+                    side < 0 ? "LegLeft" : "LegRight",
+                    new Vector3(thickness, height, depth), MaterialFor(definition.Tint), root.layer,
+                    PrimitiveFactory.ColliderMode.None, castShadows: true);
+
+                leg.transform.SetParent(root.transform, false);
+                leg.transform.localPosition = new Vector3(side * x, height * 0.5f, 0f);
+            }
         }
 
         /// <summary>
@@ -336,6 +372,7 @@ namespace Runner.Spawning
             slope.transform.localPosition = new Vector3(
                 0f, definition.RampRise * 0.5f, definition.RampRun * 0.5f);
 
+            AddRampRails(root, definition, slope.transform, slopeLength);
             AddRampUnderside(root, definition);
             return root.AddComponent<Obstacle>();
         }
@@ -349,6 +386,32 @@ namespace Runner.Spawning
         /// ramp is above it by then; anyone arriving from the side at street level is inside it.
         /// The near portion is left open because that is the entrance.
         /// </remarks>
+        /// <summary>
+        /// A raised edge along each side of the slope, so from behind the runner a ramp shows
+        /// its shape instead of reading as a flat plate. Parented to the root, not the slope:
+        /// the slope is a scaled cube, and children of it would be stretched with it. Visual only.
+        /// </summary>
+        private void AddRampRails(GameObject root, ObstacleDefinition definition, Transform slope, float slopeLength)
+        {
+            const float railWidth = 0.1f;
+            const float railHeight = 0.14f;
+
+            float x = definition.Size.x * 0.5f - railWidth * 0.5f;
+            float lift = definition.RampThickness * 0.5f + railHeight * 0.5f;
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject rail = PrimitiveFactory.CreateCube(
+                    side < 0 ? "RailLeft" : "RailRight",
+                    new Vector3(railWidth, railHeight, slopeLength), MaterialFor(definition.Tint), root.layer,
+                    PrimitiveFactory.ColliderMode.None, castShadows: true);
+
+                rail.transform.SetParent(root.transform, false);
+                rail.transform.localRotation = slope.localRotation;
+                rail.transform.localPosition = slope.localPosition + slope.localRotation * new Vector3(side * x, lift, 0f);
+            }
+        }
+
         private void AddRampUnderside(GameObject root, ObstacleDefinition definition)
         {
             const float SolidFromFraction = 0.45f;
@@ -427,8 +490,9 @@ namespace Runner.Spawning
             box.size = new Vector3(definition.Size.x, height, definition.Size.z);
         }
 
+        /// <summary>The pit tint shares the hole floor's material: one pit colour, one material.</summary>
         private Material MaterialFor(ObstacleTint tint) =>
-            tint == ObstacleTint.Pit ? _pitMaterial : _obstacleMaterial;
+            tint == ObstacleTint.Pit ? _holeFloorMaterial : _obstacleMaterial;
 
         /// <summary>Shared per kind, so every painted instance of a kind batches together.</summary>
         private Material PaintFor(ObstacleKind kind, ObstacleArt art)

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7b471634c4e9c324bb8205a532d2a2b8, type: 3}
   m_Name: ObstacleTable
   m_EditorClassIdentifier: Runner::Runner.Config.ObstacleTable
-  _defaultsVersion: 4
+  _defaultsVersion: 5
   _patterns:
   - LaneMask: 1
     Kind: 0
@@ -66,7 +66,7 @@ MonoBehaviour:
     Kind: 2
     Weight: 0.5
     MinDistance: 250
-  _formationChance: 0.9
+  _formationChance: 0.95
   _formations:
   - Name: Open road
     Rows:
@@ -521,6 +521,204 @@ MonoBehaviour:
     Difficulty: 0.35
     Entry: 0
     Exit: 1
+  - Name: Convoy
+    Rows:
+    - LaneMask: 2
+      Kind: 3
+      Coins: 0
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 0
+      Kind: 0
+      Coins: 1
+      CoinArc: 0
+    Weight: 1.6
+    MinDistance: 0
+    Difficulty: 0.3
+    Entry: 0
+    Exit: 0
+  - Name: Convoy, left
+    Rows:
+    - LaneMask: 1
+      Kind: 3
+      Coins: 0
+      CoinArc: 0
+    - LaneMask: 1
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 1
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 1
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 1
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 0
+      Kind: 0
+      Coins: 1
+      CoinArc: 0
+    Weight: 1.3
+    MinDistance: 0
+    Difficulty: 0.3
+    Entry: 0
+    Exit: 0
+  - Name: Convoy, right
+    Rows:
+    - LaneMask: 4
+      Kind: 3
+      Coins: 0
+      CoinArc: 0
+    - LaneMask: 4
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 4
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 4
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 4
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 0
+      Kind: 0
+      Coins: 1
+      CoinArc: 0
+    Weight: 1.3
+    MinDistance: 0
+    Difficulty: 0.3
+    Entry: 0
+    Exit: 0
+  - Name: Twin convoys
+    Rows:
+    - LaneMask: 5
+      Kind: 3
+      Coins: 0
+      CoinArc: 0
+    - LaneMask: 5
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 5
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 5
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 5
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 0
+      Kind: 0
+      Coins: 1
+      CoinArc: 0
+    Weight: 1.3
+    MinDistance: 0
+    Difficulty: 0.45
+    Entry: 0
+    Exit: 0
+  - Name: Long convoy
+    Rows:
+    - LaneMask: 2
+      Kind: 3
+      Coins: 0
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 0
+      Kind: 0
+      Coins: 1
+      CoinArc: 0
+    Weight: 1
+    MinDistance: 0
+    Difficulty: 0.55
+    Entry: 0
+    Exit: 0
+  - Name: Convoy with a gap
+    Rows:
+    - LaneMask: 2
+      Kind: 3
+      Coins: 0
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 0
+      Kind: 4
+      Coins: 0
+      CoinArc: 1
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 2
+      Kind: 4
+      Coins: 1
+      CoinArc: 0
+    - LaneMask: 0
+      Kind: 0
+      Coins: 1
+      CoinArc: 0
+    Weight: 1
+    MinDistance: 0
+    Difficulty: 0.6
+    Entry: 0
+    Exit: 0
   - Name: Rooftop run
     Rows:
     - LaneMask: 7

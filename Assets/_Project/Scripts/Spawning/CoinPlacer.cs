@@ -34,6 +34,16 @@ namespace Runner.Spawning
         private readonly System.Collections.Generic.List<Transform> _discs =
             new System.Collections.Generic.List<Transform>();
 
+        /// <summary>
+        /// Each disc's own head start, in degrees. Coins turning in step all go edge-on at the
+        /// same instant and the whole trail flickers into thin lines; staggering them by the
+        /// golden angle keeps the trail reading as coins at every moment.
+        /// </summary>
+        private readonly System.Collections.Generic.List<float> _discPhases =
+            new System.Collections.Generic.List<float>();
+
+        private const float GoldenAngle = 137.508f;
+
         public CoinPlacer(Transform poolRoot, CoinPlacerSettings settings, Coin prefab)
         {
             _settings = settings;
@@ -55,17 +65,17 @@ namespace Runner.Spawning
         }
 
         /// <summary>
-        /// Turns every coin to the same angle. One rotation computed, then plain writes: no
+        /// Turns every coin, each from its own head start. One loop with plain arithmetic: no
         /// allocation and no per-coin Update. Pooled coins turn too; that is cheaper than
         /// checking which are live.
         /// </summary>
         public void Spin(float time)
         {
-            Quaternion rotation = Quaternion.AngleAxis(time * SpinSpeed, Vector3.up) * Upright;
+            float angle = time * SpinSpeed;
 
             for (int i = 0; i < _discs.Count; i++)
             {
-                _discs[i].localRotation = rotation;
+                _discs[i].localRotation = Quaternion.AngleAxis(angle + _discPhases[i], Vector3.up) * Upright;
             }
         }
 
@@ -90,8 +100,8 @@ namespace Runner.Spawning
         /// Coins along the exact parabola of a well-timed jump across a gap.
         /// </summary>
         /// <remarks>
-        /// Computed, never authored. The same jump covers about 6.5m at the starting pace and
-        /// roughly 16m at full tilt, so a drawn arc would be right at exactly one speed and lie
+        /// Computed, never authored. The same jump covers about 8m at the starting pace and
+        /// roughly 13m at full tilt, so a drawn arc would be right at exactly one speed and lie
         /// everywhere else. Deriving it from the live jump profile keeps the line honest: if the
         /// coins say the jump is makeable, it is.
         /// </remarks>
@@ -197,6 +207,7 @@ namespace Runner.Spawning
             discTransform.localScale = new Vector3(diameter, thickness * 0.5f, diameter);
             discTransform.localRotation = Upright;
 
+            _discPhases.Add((_discs.Count * GoldenAngle) % 360f);
             _discs.Add(discTransform);
             return root.AddComponent<Coin>();
         }
