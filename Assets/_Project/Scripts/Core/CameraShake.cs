@@ -37,6 +37,14 @@ namespace Runner.Core
         [Tooltip("How quickly the camera catches up with a lane change. Higher is snappier.")]
         [SerializeField] private float _followSharpness = 9f;
 
+        [Tooltip("Share of the height the runner is standing at (a roof, a train) the camera rises " +
+                 "by. Without it, a runner on a train roof is at the camera's own height.")]
+        [SerializeField, Range(0f, 1f)] private float _heightFraction = 0.85f;
+
+        [Tooltip("How quickly the camera rises and settles with the runner's footing. Lower than " +
+                 "the sideways follow, so a jump does not bob the view.")]
+        [SerializeField] private float _heightSharpness = 4f;
+
         private Transform _transform;
         private Vector3 _basePosition;
         private float _duration;
@@ -46,6 +54,8 @@ namespace Runner.Core
 
         private float _followTarget;
         private float _followX;
+        private float _heightTarget;
+        private float _followY;
 
         private void Awake()
         {
@@ -54,10 +64,15 @@ namespace Runner.Core
             _seed = Random.value * 100f;
         }
 
-        /// <summary>Where the runner is sideways. Call every frame; it is two float writes.</summary>
-        public void Follow(float playerX)
+        /// <summary>
+        /// Where the runner is sideways, and the height of what they are standing on. Call every
+        /// frame; it is two float writes. Footing, not the jump arc: following every jump would
+        /// bob the whole view up and down.
+        /// </summary>
+        public void Follow(float playerX, float supportHeight)
         {
             _followTarget = playerX * _followFraction;
+            _heightTarget = supportHeight * _heightFraction;
         }
 
         public void Shake() => Shake(_defaultStrength, _defaultDuration);
@@ -81,6 +96,7 @@ namespace Runner.Core
 
             // Exponential approach: frame-rate independent and never overshoots.
             _followX = Mathf.Lerp(_followX, _followTarget, 1f - Mathf.Exp(-_followSharpness * dt));
+            _followY = Mathf.Lerp(_followY, _heightTarget, 1f - Mathf.Exp(-_heightSharpness * dt));
 
             Vector3 shake = Vector3.zero;
             if (_remaining > 0f)
@@ -100,7 +116,7 @@ namespace Runner.Core
                 }
             }
 
-            _transform.localPosition = _basePosition + new Vector3(_followX, 0f, 0f) + shake;
+            _transform.localPosition = _basePosition + new Vector3(_followX, _followY, 0f) + shake;
         }
     }
 }

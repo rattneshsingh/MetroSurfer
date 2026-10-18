@@ -258,12 +258,9 @@ namespace Runner.Spawning
                 obstacle.gameObject.AddComponent<MovingObstacle>().Initialize();
             }
 
-            // A ramp starts at its position and climbs forward; everything else is centred on it.
-            float farEdge = definition.Form == ObstacleForm.Ramp ? definition.RampRun : definition.Size.z * 0.5f;
-
             // A barrier raised off the road is one you pass under: overhead bars, low bridges.
             bool overhead = definition.Form == ObstacleForm.Barrier && definition.BaseHeight > 0f;
-            obstacle.Initialize(definition.Kind, farEdge, overhead);
+            obstacle.Initialize(definition.Kind, overhead);
             return obstacle;
         }
 
@@ -370,7 +367,7 @@ namespace Runner.Spawning
             // world scrolls toward them.
             slope.transform.localRotation = Quaternion.Euler(-angle, 0f, 0f);
             slope.transform.localPosition = new Vector3(
-                0f, definition.RampRise * 0.5f, definition.RampRun * 0.5f);
+                0f, definition.RampRise * 0.5f, definition.RampStart + definition.RampRun * 0.5f);
 
             AddRampRails(root, definition, slope.transform, slopeLength);
             AddRampUnderside(root, definition);
@@ -416,9 +413,15 @@ namespace Runner.Spawning
         {
             const float SolidFromFraction = 0.45f;
 
-            float startZ = definition.RampRun * SolidFromFraction;
-            float depth = definition.RampRun - startZ;
-            float height = definition.RampRise * SolidFromFraction;
+            // Kept this far below the slope surface. Its top used to sit exactly level with the
+            // slope where it begins, so a runner reading the ramp a few centimetres low clipped
+            // it and died while riding up properly. It still catches anyone running into the
+            // side of the ramp at street level.
+            const float RideClearance = 0.3f;
+
+            float startZ = definition.RampStart + definition.RampRun * SolidFromFraction;
+            float depth = definition.RampStart + definition.RampRun - startZ;
+            float height = definition.RampRise * SolidFromFraction - RideClearance;
 
             if (depth <= 0.01f || height <= 0.01f)
             {

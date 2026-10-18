@@ -101,8 +101,8 @@ namespace Runner.Tests
             float solidTop = box.center.y + box.size.y * 0.5f;
             float solidStartZ = box.center.z - box.size.z * 0.5f;
 
-            // Height of the slope where the solid part begins.
-            float slopeHeightThere = definition.RampRise * (solidStartZ / definition.RampRun);
+            // Height of the slope where the solid part begins. The slope starts at RampStart.
+            float slopeHeightThere = definition.RampRise * ((solidStartZ - definition.RampStart) / definition.RampRun);
             const float HitboxBottom = 0.075f;
 
             Assert.LessOrEqual(solidTop, slopeHeightThere + HitboxBottom,
@@ -112,10 +112,44 @@ namespace Runner.Tests
             Assert.Greater(solidTop, 0.4f,
                 "The solid part is too shallow to catch a runner arriving at street level.");
 
-            Assert.Greater(solidStartZ, 0f,
+            Assert.Greater(solidStartZ, definition.RampStart,
                 "The entrance to the ramp must stay open, or you cannot get on it.");
 
             _factory.Release(ObstacleKind.Ramp, handle);
+        }
+
+        /// <summary>
+        /// The runner's height on a ramp can trail the slope by a frame of climbing. If the
+        /// solid underside sits closer under the slope than that, riding up properly clips it
+        /// and kills — which is how ramps were killing people at full speed.
+        /// </summary>
+        [Test]
+        public void RampUndersideLeavesRoomForAFrameOfClimb()
+        {
+            Obstacle ramp = _factory.Get(ObstacleKind.Ramp, out int handle);
+            ObstacleDefinition definition = _catalog.Get(ObstacleKind.Ramp);
+            DifficultyCurve curve = DifficultyCurve.CreateDefault();
+
+            try
+            {
+                BoxCollider box = ramp.transform.Find("Lethal").GetComponent<BoxCollider>();
+                float solidTop = box.center.y + box.size.y * 0.5f;
+                float solidStartZ = box.center.z - box.size.z * 0.5f;
+                float slope = definition.RampRise / definition.RampRun;
+                float slopeHeightThere = slope * (solidStartZ - definition.RampStart);
+
+                float topSpeed = curve.EvaluateSpeed(1000000f);
+                float climbPerFrame = topSpeed * (1f / 60f) * slope;
+
+                Assert.Less(solidTop, slopeHeightThere - climbPerFrame,
+                    $"The solid underside is only {slopeHeightThere - solidTop:0.00} below the slope, " +
+                    $"less than the {climbPerFrame:0.00} a runner climbs in one frame at top speed.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(curve);
+                _factory.Release(ObstacleKind.Ramp, handle);
+            }
         }
 
         [Test]

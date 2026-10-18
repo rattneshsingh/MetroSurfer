@@ -144,15 +144,60 @@ namespace Runner.Tests
                 "An underpass must not be jumpable from the highest tier.");
         }
 
-        /// <summary>Tier one has to be reachable from the road, or the stack has no entrance.</summary>
+        /// <summary>
+        /// Vehicles are climbed, not hopped onto. If a jump from the street can land on a roof,
+        /// trucks stop being obstacles and ramps stop having a purpose — which is exactly how the
+        /// game played until this was turned around. The ramp is the entrance to the stack.
+        /// </summary>
+        /// <remarks>
+        /// A falling runner lands on any surface the ground probe finds, and the probe starts
+        /// above the feet, so the highest reachable roof is the jump apex plus that head start.
+        /// </remarks>
         [Test]
-        public void TruckRoofIsReachableFromTheStreet()
+        public void VehicleRoofsAreOutOfJumpingReachFromTheStreet()
         {
-            float roof = _catalog.RoofHeight(ObstacleKind.Truck);
+            PlayerTuning tuning = PlayerTuning.CreateDefault();
+            try
+            {
+                float highestLanding = JumpApex + tuning.ProbeStartHeight;
 
-            Assert.Greater(roof, 0f, "A truck must have a roof to stand on.");
-            Assert.Greater(StandingBottom + JumpApex, roof,
-                $"Jump apex puts the feet at {StandingBottom + JumpApex:0.00}, below the {roof:0.00} truck roof.");
+                foreach (ObstacleKind kind in new[]
+                         {
+                             ObstacleKind.Truck, ObstacleKind.MovingTruck,
+                             ObstacleKind.OncomingTruck, ObstacleKind.StoppingBus, ObstacleKind.Train
+                         })
+                {
+                    float roof = _catalog.RoofHeight(kind);
+
+                    Assert.Greater(roof, highestLanding,
+                        $"A jump from the street lands anything up to {highestLanding:0.00}, so the " +
+                        $"{roof:0.00} {kind} roof can be hopped onto and is no longer an obstacle.");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(tuning);
+            }
+        }
+
+        /// <summary>
+        /// The ramp fills its row cell and ends exactly where the truck in the next row begins,
+        /// so riding it up arrives on the roof with no step, gap or wall at the top.
+        /// </summary>
+        [Test]
+        public void RampFillsItsRowAndMeetsTheNextTruck()
+        {
+            const float RowSpacing = 5f;
+
+            ObstacleDefinition ramp = _catalog.Get(ObstacleKind.Ramp);
+            ObstacleDefinition truck = _catalog.Get(ObstacleKind.Truck);
+
+            float rampEnd = ramp.RampStart + ramp.RampRun;
+            float truckFront = RowSpacing - truck.Size.z * 0.5f;
+
+            Assert.AreEqual(-RowSpacing * 0.5f, ramp.RampStart, 0.01f, "The ramp should start at its row's near edge.");
+            Assert.AreEqual(truckFront, rampEnd, 0.01f,
+                $"The ramp ends at {rampEnd:0.00} but the next truck starts at {truckFront:0.00}.");
         }
 
         /// <summary>

@@ -49,6 +49,10 @@ namespace Runner.Config
         public float RoofSafeInset = 0.25f;
 
         [Header("Ramp only")]
+        [Tooltip("Where the slope begins, relative to the obstacle's position. Negative starts it " +
+                 "behind the row centre, so a ramp can fill its whole row and end at the next one.")]
+        public float RampStart;
+
         public float RampRun = 3f;
         public float RampRise = 1.2f;
         public float RampThickness = 0.25f;

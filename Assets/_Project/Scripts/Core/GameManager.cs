@@ -15,6 +15,11 @@ namespace Runner.Core
     /// Deliberately not a static singleton. Everything it needs is a serialized reference, and
     /// everything that needs it is either called by it or raises an event it subscribes to.
     /// </remarks>
+    // Runs before the player. The world scrolls first, then the player probes the ground, so
+    // the probe sees where ramps and roofs actually are this frame — not where they were. Left
+    // to chance, the probe sometimes ran first and read a ramp a frame behind, a few centimetres
+    // low on a steep slope, which was enough to clip the ramp's solid underside and die.
+    [DefaultExecutionOrder(-100)]
     public sealed class GameManager : MonoBehaviour
     {
         [Header("Scene references")]
@@ -193,7 +198,7 @@ namespace Runner.Core
             // Every state, so a restart eases the camera back to the centre lane too.
             if (_cameraShake != null && _player != null)
             {
-                _cameraShake.Follow(_player.LaneX);
+                _cameraShake.Follow(_player.LaneX, _player.SupportHeight);
             }
         }
 

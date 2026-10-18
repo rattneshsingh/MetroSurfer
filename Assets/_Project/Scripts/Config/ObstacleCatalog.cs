@@ -16,7 +16,23 @@ namespace Runner.Config
     {
         private const int KindCount = 11;
 
+        /// <summary>Bumped whenever the built-in defaults change.</summary>
+        public const int CurrentDefaultsVersion = 2;
+
+        /// <summary>
+        /// Height of every road vehicle, and so of every truck-tier roof. Above the highest roof a
+        /// jump from the street can reach — the apex of 1.5 plus the 0.6 the landing probe
+        /// reaches above the feet — so the only way onto a vehicle is up a ramp. Otherwise
+        /// trucks stop being obstacles and ramps stop having a purpose.
+        /// </summary>
+        public const float VehicleHeight = 2.25f;
+
+        [HideInInspector]
+        [SerializeField] private int _defaultsVersion;
+
         [SerializeField] private ObstacleDefinition[] _definitions;
+
+        public int DefaultsVersion => _defaultsVersion;
 
         private ObstacleDefinition[] _byKind;
 
@@ -110,6 +126,7 @@ namespace Runner.Config
         /// </summary>
         private void FillDefaults()
         {
+            _defaultsVersion = CurrentDefaultsVersion;
             _definitions = new[]
             {
                 new ObstacleDefinition
@@ -134,37 +151,40 @@ namespace Runner.Config
                 },
                 new ObstacleDefinition
                 {
+                    // Fills its whole row cell, from the cell's near edge to its far edge, and
+                    // rises to the truck roof — so it meets the front of the truck in the next
+                    // row exactly, at a gentle slope. Ramps are the only way onto the stack.
                     Kind = ObstacleKind.Ramp, Form = ObstacleForm.Ramp,
-                    Size = new Vector3(1.8f, 0.25f, 3f),
-                    RampRun = 3f, RampRise = 1.2f, RampThickness = 0.25f
+                    Size = new Vector3(1.8f, 0.25f, 5f),
+                    RampStart = -2.5f, RampRun = 5f, RampRise = VehicleHeight, RampThickness = 0.25f
                 },
                 new ObstacleDefinition
                 {
                     // Exactly one row long, so trucks in consecutive rows meet nose to tail and
                     // a convoy's roofs form one continuous road with no gaps underfoot.
                     Kind = ObstacleKind.Truck, Form = ObstacleForm.Landable,
-                    Size = new Vector3(1.8f, 1.2f, 5f)
+                    Size = new Vector3(1.8f, VehicleHeight, 5f)
                 },
                 new ObstacleDefinition
                 {
                     Kind = ObstacleKind.MovingTruck, Form = ObstacleForm.Landable,
-                    Size = new Vector3(1.8f, 1.2f, 4.6f), Drift = DriftMode.Oscillate
+                    Size = new Vector3(1.8f, VehicleHeight, 4.6f), Drift = DriftMode.Oscillate
                 },
                 new ObstacleDefinition
                 {
                     Kind = ObstacleKind.OncomingTruck, Form = ObstacleForm.Landable,
-                    Size = new Vector3(1.8f, 1.2f, 4.6f), Drift = DriftMode.Approach
+                    Size = new Vector3(1.8f, VehicleHeight, 4.6f), Drift = DriftMode.Approach
                 },
                 new ObstacleDefinition
                 {
                     Kind = ObstacleKind.StoppingBus, Form = ObstacleForm.Landable,
-                    Size = new Vector3(1.8f, 1.4f, 4.6f), Drift = DriftMode.Decelerate
+                    Size = new Vector3(1.8f, VehicleHeight, 4.6f), Drift = DriftMode.Decelerate
                 },
                 new ObstacleDefinition
                 {
-                    // Out of reach from the street on purpose: you get here off a truck roof.
+                    // A tier above the trucks: out of reach from the street, a jump from a roof.
                     Kind = ObstacleKind.Train, Form = ObstacleForm.Landable,
-                    Size = new Vector3(1.8f, 2.4f, 4.5f), ClosesLane = true
+                    Size = new Vector3(1.8f, 2.5f, 4.5f), ClosesLane = true
                 },
                 new ObstacleDefinition
                 {

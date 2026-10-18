@@ -62,25 +62,26 @@ namespace Runner.Spawning
         }
 
         /// <summary>
-        /// Hides anything whose far end is already past the cull line. Local Z is cached at
+        /// Hides overhead obstacles the runner has just passed under. Local Z is cached at
         /// spawn time so this never touches a Transform — it runs every frame on the segment
         /// straddling the line.
         /// </summary>
         /// <remarks>
-        /// The far end, not the position: a ramp starts at its position and runs three metres
-        /// forward, and a truck is centred on it, so testing the position hid ramps mid-climb and
-        /// truck roofs from under the runner's feet.
+        /// Overhead only. The chase camera sits behind and above the runner, so a bar they have
+        /// just rolled under is between camera and runner and fills the frame. Everything on
+        /// the ground is left alone: it scrolls off the bottom of the screen by itself, and
+        /// hiding it early made barriers, trucks and pits vanish while still in view.
         /// </remarks>
-        /// <param name="localCullZ">Ground obstacles hide once their far end is past this.</param>
-        /// <param name="localOverheadCullZ">
-        /// Overhead obstacles hide once their centre is past this — as the runner passes under
-        /// them, before the chase camera has to look back through them.
-        /// </param>
-        public void HideObstaclesBehind(float localCullZ, float localOverheadCullZ)
+        /// <param name="localOverheadCullZ">Overhead obstacles hide once their centre is past this.</param>
+        public void HideObstaclesBehind(float localOverheadCullZ)
         {
             for (int i = 0; i < _obstacleCount; i++)
             {
                 Obstacle obstacle = _obstacles[i];
+                if (!obstacle.IsOverhead)
+                {
+                    continue;
+                }
 
                 // The cached Z is the spawn position, which is stale for anything that moves.
                 // Only movers pay for the transform read, and there are few of them.
@@ -88,11 +89,7 @@ namespace Runner.Spawning
                     ? obstacle.transform.localPosition.z
                     : _obstacleLocalZ[i];
 
-                bool passed = obstacle.IsOverhead
-                    ? z < localOverheadCullZ
-                    : z + obstacle.FarEdge < localCullZ;
-
-                if (passed)
+                if (z < localOverheadCullZ)
                 {
                     obstacle.Hide();
                 }

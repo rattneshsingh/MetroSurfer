@@ -43,13 +43,10 @@ namespace Runner.Spawning
                  "coins. Gives time to settle before the first thing to react to.")]
         [SerializeField] private float _startRunway = 25f;
 
-        [Tooltip("Z behind the player at which ground obstacles stop being drawn, once their far " +
-                 "end has passed it.")]
-        [SerializeField] private float _obstacleCullZ = -1f;
-
         [Tooltip("Z at which overhead obstacles (bars to roll under, low bridges) stop being drawn. " +
                  "At the player, because the chase camera looks back through anything above the " +
-                 "runner's head the moment they pass under it, and the bar fills the screen.")]
+                 "runner's head the moment they pass under it, and the bar fills the screen. " +
+                 "Ground obstacles are never hidden; they scroll off screen by themselves.")]
         [SerializeField] private float _overheadCullZ = 0f;
 
         [SerializeField] private float _trackSidePadding = 1.2f;
@@ -246,6 +243,15 @@ namespace Runner.Spawning
                     "Run Runner > Reset Tuning Assets to Defaults.", this);
             }
 
+            if (_catalog != null &&
+                _catalog.DefaultsVersion != ObstacleCatalog.CurrentDefaultsVersion)
+            {
+                Debug.LogError(
+                    $"ObstacleCatalog.asset is version {_catalog.DefaultsVersion}, code expects " +
+                    $"{ObstacleCatalog.CurrentDefaultsVersion}. It is using old obstacle sizes. " +
+                    "Run Runner > Reset Tuning Assets to Defaults.", this);
+            }
+
             if (_introSequence != null &&
                 _introSequence.DefaultsVersion != IntroSequence.CurrentDefaultsVersion)
             {
@@ -330,6 +336,13 @@ namespace Runner.Spawning
 
                 RecycleHead(distance);
             }
+
+            // Physics only picks up moved transforms on its own fixed step, which runs slower
+            // than the frame rate, so the player's ground probe could read ramps and roofs where
+            // they were up to a frame or two ago. On a steep ramp at speed that put the runner a
+            // few centimetres inside the ramp's solid underside. One sync, once the world has
+            // finished moving, makes the probe see this frame's world.
+            Physics.SyncTransforms();
         }
 
         private void CullPassedObstacles()
@@ -338,15 +351,13 @@ namespace Runner.Spawning
             {
                 float segmentZ = _segmentTransforms[i].localPosition.z;
 
-                // Only segments straddling either cull line can have something to hide.
-                float nearestLine = Mathf.Min(_obstacleCullZ, _overheadCullZ);
-                float furthestLine = Mathf.Max(_obstacleCullZ, _overheadCullZ);
-                if (segmentZ > furthestLine || segmentZ + _segmentLength < nearestLine)
+                // Only the segment straddling the line can have something to hide.
+                if (segmentZ > _overheadCullZ || segmentZ + _segmentLength < _overheadCullZ)
                 {
                     continue;
                 }
 
-                _segments[i].HideObstaclesBehind(_obstacleCullZ - segmentZ, _overheadCullZ - segmentZ);
+                _segments[i].HideObstaclesBehind(_overheadCullZ - segmentZ);
             }
         }
 

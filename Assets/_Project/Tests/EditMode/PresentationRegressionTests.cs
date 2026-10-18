@@ -14,8 +14,7 @@ namespace Runner.Tests
         /// <summary>The spawner's default row spacing. Convoy trucks must be exactly this long.</summary>
         private const float RowSpacing = 5f;
 
-        /// <summary>Matches SegmentSpawner's defaults: ground obstacles cull at -1, overhead at 0.</summary>
-        private const float GroundCull = -1f;
+        /// <summary>Matches SegmentSpawner's default: overhead obstacles hide as the runner passes under.</summary>
         private const float OverheadCull = 0f;
 
         /// <summary>A pit's depth cutter sits this far above the road; lane dashes must stay under it.</summary>
@@ -56,23 +55,22 @@ namespace Runner.Tests
             Object.DestroyImmediate(_catalog);
         }
 
-        // ---- Hiding: the cull line must not eat things the runner is still on ----
+        // ---- Hiding: only overhead obstacles are ever hidden ----
 
+        /// <summary>
+        /// The chase camera sits several metres behind the runner, so anything just passed is
+        /// still on screen. Hiding ground obstacles behind the runner made ramps vanish mid-climb,
+        /// truck roofs vanish underfoot, and barriers and pits blink out at the bottom of the
+        /// screen. They now scroll off by themselves.
+        /// </summary>
         [Test]
-        public void RampStaysVisibleWhileTheRunnerClimbsIt()
+        public void GroundObstaclesAreNeverHiddenEarly(
+            [Values(ObstacleKind.Ramp, ObstacleKind.Truck, ObstacleKind.Low, ObstacleKind.Full, ObstacleKind.Pit)]
+            ObstacleKind kind,
+            [Values(-2f, -6f)] float localZ)
         {
-            // A ramp starts at its position and runs three metres forward. At -2 it reaches +1:
-            // the runner is halfway up it. It used to vanish here.
-            Assert.IsTrue(VisibleAfterCull(ObstacleKind.Ramp, -2f), "Ramp vanished mid-climb.");
-            Assert.IsFalse(VisibleAfterCull(ObstacleKind.Ramp, -4.5f), "Ramp never hid once fully passed.");
-        }
-
-        [Test]
-        public void TruckRoofStaysVisibleUnderTheRunnersFeet()
-        {
-            // A truck is centred on its position. At -2 its front is still ahead of the runner.
-            Assert.IsTrue(VisibleAfterCull(ObstacleKind.Truck, -2f), "Truck vanished from under the runner.");
-            Assert.IsFalse(VisibleAfterCull(ObstacleKind.Truck, -4f), "Truck never hid once fully passed.");
+            Assert.IsTrue(VisibleAfterCull(kind, localZ),
+                $"{kind} disappeared {-localZ} m behind the runner, while still on screen.");
         }
 
         [Test]
@@ -94,6 +92,28 @@ namespace Runner.Tests
             {
                 Assert.IsFalse(Build(ground[i]).IsOverhead, $"{ground[i]} is on the ground, not overhead.");
             }
+        }
+
+        // ---- Frame order: the world moves before the player looks at it ----
+
+        /// <summary>
+        /// The player probes the ground every frame. If that ran before the world scrolled, it
+        /// read ramps a frame behind and the runner sat low on steep slopes. GameManager, which
+        /// scrolls the world, must run first.
+        /// </summary>
+        [Test]
+        public void WorldScrollsBeforeThePlayerProbesTheGround()
+        {
+            int manager = ExecutionOrder(typeof(Runner.Core.GameManager));
+            int player = ExecutionOrder(typeof(Runner.Player.LaneController));
+
+            Assert.Less(manager, player, "GameManager must update before LaneController.");
+        }
+
+        private static int ExecutionOrder(System.Type type)
+        {
+            object[] attributes = type.GetCustomAttributes(typeof(DefaultExecutionOrder), false);
+            return attributes.Length > 0 ? ((DefaultExecutionOrder)attributes[0]).order : 0;
         }
 
         // ---- Pits: merged neighbours must stay merged ----
@@ -242,7 +262,7 @@ namespace Runner.Tests
             Obstacle obstacle = _factory.Get(kind, out int handle);
             obstacle.OnSpawn();
             segment.AddObstacle(obstacle, handle, kind, localZ);
-            segment.HideObstaclesBehind(GroundCull, OverheadCull);
+            segment.HideObstaclesBehind(OverheadCull);
 
             bool visible = AnyRendererShowing(obstacle);
             _factory.Release(kind, handle);
